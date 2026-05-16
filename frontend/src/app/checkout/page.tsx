@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Loader2, MapPin, Package, ShieldCheck, ArrowRight, CreditCard, Truck } from "lucide-react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { Loader2, ArrowLeft, ShieldCheck, ChevronDown, ChevronUp, Lock, Truck } from "lucide-react";
 
 import { useCartStore } from "@/stores/cartStore";
 import { useProductStore } from "@/stores/productStore";
@@ -14,31 +15,36 @@ declare global {
   interface Window {
     snap: {
       pay: (snapToken: string, callbacks: {
-        onSuccess: (result: MidtransSnapCallbackResult) => void;
-        onPending?: (result: MidtransSnapCallbackResult) => void;
-        onError?: (result: MidtransSnapCallbackResult) => void;
+        onSuccess: (result: any) => void;
+        onPending?: (result: any) => void;
+        onError?: (result: any) => void;
         onClose?: () => void;
       }) => void;
     };
   }
 }
 
-type MidtransSnapCallbackResult = {
-  payment_type?: string;
-  status?: string;
-  [key: string]: unknown;
-};
-
 function formatIDR(value: number | string) {
   const num = typeof value === "string" ? parseFloat(value) : value;
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(num);
 }
 
+type PaymentOption = {
+  id: string;
+  label: string;
+  desc: string;
+  disabled?: boolean;
+};
+
 export default function CheckoutPage() {
+  const router = useRouter();
   const { items, hydrate, clearCart } = useCartStore();
   const { products, fetchProducts, isLoading } = useProductStore();
 
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
+
   useEffect(() => {
     hydrate();
     fetchProducts();
@@ -63,53 +69,57 @@ export default function CheckoutPage() {
     phone: "",
     province: "",
     city: "",
+    kecamatan: "",
     zip: "",
     detail: "",
+    isPrimary: true,
   });
 
-  const [kurir, setKurir] = useState("jne");
-  const [ongkir, setOngkir] = useState<number | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"qris" | "bank_transfer" | "ewallet">("qris");
+  const [kurir, setKurir] = useState("regular");
+  const [ongkir, setOngkir] = useState<number>(15000); // Default simulated
+  const [paymentMethod, setPaymentMethod] = useState<"bank_transfer" | "ewallet" | "credit_card" | "virtual_account" | "cod">("bank_transfer");
 
-  async function onEstimateOngkir() {
-    setOngkir(24000);
-  }
+  const shippingOptions = [
+    { id: "regular", label: "Regular", desc: "2-4 Hari", price: 15000, icon: "/icons/regular.svg" },
+    { id: "hemat", label: "Hemat", desc: "3-5 Hari", price: 9000, icon: "/icons/hemat.svg" },
+    { id: "instan", label: "Instan", desc: "1-2 Hari", price: 25000, icon: "/icons/instan.svg" },
+    { id: "pickup", label: "Ambil di Toko", desc: "Ambil di toko terdekat", price: 0, icon: "/icons/store.svg" },
+  ];
+
+  const paymentOptions: PaymentOption[] = [
+    { id: "bank_transfer", label: "Transfer Bank", desc: "Bayar melalui bank pilihan" },
+    { id: "ewallet", label: "E-Wallet", desc: "OVO, GoPay, Dana, ShopeePay" },
+    { id: "credit_card", label: "Kartu Kredit / Debit", desc: "Visa, Mastercard, JCB" },
+    { id: "virtual_account", label: "Virtual Account", desc: "BCA, Mandiri, BNI, BRI" },
+    { id: "cod", label: "COD (Bayar di Tempat)", desc: "Tidak tersedia untuk produk tertentu", disabled: true },
+  ];
+
+  useEffect(() => {
+    // Update simulated ongkir when kurir changes
+    const selected = shippingOptions.find(o => o.id === kurir);
+    if (selected) setOngkir(selected.price);
+  }, [kurir]);
+
+  const handleNextStep1 = () => {
+    const required = [address.name, address.phone, address.province, address.city, address.zip, address.detail];
+    if (required.some((v) => !String(v).trim())) {
+      alert("Mohon lengkapi alamat pengiriman.");
+      return;
+    }
+    setStep(2);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleNextStep2 = () => {
+    setStep(3);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   async function onCreatePayment() {
     if (!hasItems) return;
-
-    const required = [address.name, address.phone, address.province, address.city, address.zip, address.detail];
-    if (required.some((v) => !String(v).trim())) {
-      alert("Please complete the shipping address form.");
-      return;
-    }
-    if (!ongkir) {
-      alert("Please calculate shipping first.");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
-      // Sync local cart to backend first
-      console.log("Starting order creation...");
-      console.log("Cart items:", items);
-      
       await cartService.syncCart(items);
-      console.log("Cart synced successfully");
-
-      console.log("Creating order with data:", {
-        shipping_cost: ongkir,
-        courier: kurir,
-        service: "REG",
-        recipient_name: address.name,
-        recipient_phone: address.phone,
-        province: address.province,
-        city: address.city,
-        postal_code: address.zip,
-        address_detail: address.detail,
-        notes: "Order via Web",
-      });
-
       const orderResponse = await orderService.createOrder({
         shipping_cost: ongkir,
         courier: kurir,
@@ -123,38 +133,31 @@ export default function CheckoutPage() {
         notes: "Order via Web",
       });
 
-      console.log("Order response:", orderResponse);
       const snapToken = orderResponse.data.payment.snap_token;
-
       if (window.snap) {
         window.snap.pay(snapToken, {
           onSuccess: (result) => {
             clearCart();
-            window.location.href = "/payment/success?method=" + (result.payment_type || "");
+            window.location.href = "/payment/success?method=" + (result.payment_type || paymentMethod);
           },
           onPending: (result) => {
             clearCart();
-            window.location.href = "/payment/success?method=" + (result.payment_type || "");
+            window.location.href = "/payment/success?method=" + (result.payment_type || paymentMethod);
           },
           onError: (result) => {
             console.error("Payment Error:", result);
-            alert("Payment failed. Please try again.");
+            alert("Pembayaran gagal. Silakan coba lagi.");
           },
           onClose: () => {
-            alert("You closed the payment popup without finishing payment.");
+            alert("Anda menutup jendela pembayaran.");
           }
         });
       } else {
-        alert("Midtrans Snap is not loaded. Please refresh the page.");
+        alert("Sistem pembayaran belum siap. Silakan muat ulang halaman.");
       }
-    } catch (err: unknown) {
+    } catch (err: any) {
       console.error("Order Creation Error:", err);
-      const e = err as { message?: string; response?: { data?: { message?: string } } };
-      const errorMessage =
-        e?.response?.data?.message ||
-        e?.message ||
-        "Failed to create order. Please check that the API server is running at " +
-          (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000");
+      const errorMessage = err?.response?.data?.message || err?.message || "Gagal membuat pesanan.";
       alert(errorMessage);
     } finally {
       setIsSubmitting(false);
@@ -163,208 +166,279 @@ export default function CheckoutPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-20 flex flex-col items-center justify-center gap-4">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Preparing checkout...</p>
+      </div>
+    );
+  }
+
+  if (!hasItems && !isLoading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
+        <h2 className="text-xl font-bold">Keranjang Kosong</h2>
+        <button onClick={() => router.push('/catalog')} className="mt-4 text-primary font-bold">Belanja Sekarang</button>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-12">
-      <div className="flex flex-col gap-8 mb-12">
-        <div className="space-y-2">
-          <h1 className="text-5xl font-black tracking-tight">Checkout.</h1>
-          <p className="text-muted-foreground text-lg">Finalize your order and choose your preferred shipping.</p>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gray-50 pb-24 md:pb-12">
+      {/* ── App Header ────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm px-4 h-14 flex items-center justify-between max-w-lg mx-auto">
+        <button onClick={() => step > 1 ? setStep((s) => (s - 1) as 1|2|3) : router.back()} className="h-10 w-10 flex items-center justify-center text-gray-900 -ml-2">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h1 className="text-base font-bold text-gray-900">Checkout</h1>
+        <div className="w-10" /> {/* Spacer */}
+      </header>
 
-      {!hasItems ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
-          <div className="h-24 w-24 rounded-full bg-secondary flex items-center justify-center text-muted-foreground">
-            <Package className="h-10 w-10" />
+      <div className="max-w-lg mx-auto bg-white min-h-[calc(100vh-3.5rem)]">
+        {/* ── Stepper ─────────────────────────────────────────────── */}
+        <div className="px-6 py-6 border-b border-gray-100 relative">
+          <div className="flex justify-between relative z-10">
+            {/* Line connecting steps */}
+            <div className="absolute top-4 left-6 right-6 h-[2px] bg-gray-200 -z-10" />
+            
+            {/* Step 1 */}
+            <div className="flex flex-col items-center gap-2">
+              <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors", step >= 1 ? "bg-primary text-white" : "bg-gray-200 text-gray-400")}>1</div>
+              <span className={cn("text-[10px] font-bold", step >= 1 ? "text-primary" : "text-gray-400")}>Alamat</span>
+            </div>
+            {/* Step 2 */}
+            <div className="flex flex-col items-center gap-2">
+              <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors", step >= 2 ? "bg-primary text-white" : "bg-white border-2 border-gray-200 text-gray-400")}>2</div>
+              <span className={cn("text-[10px] font-bold", step >= 2 ? "text-primary" : "text-gray-400")}>Pengiriman</span>
+            </div>
+            {/* Step 3 */}
+            <div className="flex flex-col items-center gap-2">
+              <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors", step >= 3 ? "bg-primary text-white" : "bg-white border-2 border-gray-200 text-gray-400")}>3</div>
+              <span className={cn("text-[10px] font-bold", step >= 3 ? "text-primary" : "text-gray-400")}>Pembayaran</span>
+            </div>
           </div>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-bold">Nothing to checkout</h2>
-            <p className="text-muted-foreground">Your cart is currently empty.</p>
-          </div>
-          <Link
-            href="/catalog"
-            className="inline-flex h-14 items-center justify-center gap-3 rounded-full bg-primary px-8 text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-primary/20 transition-all hover:scale-105"
-          >
-            Start Shopping <ArrowRight className="h-4 w-4" />
-          </Link>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-          <div className="lg:col-span-8 space-y-8">
-            {/* Shipping Address */}
-            <section className="p-8 rounded-[2.5rem] border bg-card shadow-premium">
-              <div className="flex items-center gap-4 mb-8">
-                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                  <MapPin className="h-6 w-6" />
-                </div>
-                <h2 className="text-2xl font-black tracking-tight">Shipping Address.</h2>
+
+        {/* ── STEP 1: ALAMAT ──────────────────────────────────────── */}
+        {step === 1 && (
+          <div className="p-6 animate-in slide-in-from-right-4 duration-300">
+            <div className="flex items-center gap-3 bg-rose-50/50 p-3 rounded-xl border border-rose-100 mb-6">
+              <ShieldCheck className="h-5 w-5 text-primary shrink-0" />
+              <p className="text-xs text-gray-700 font-medium leading-tight">
+                Belanjaanmu aman! Kami tidak akan membagikan data kamu.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-gray-900">Alamat Pengiriman</h2>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Nama Penerima</label>
+                <input value={address.name} onChange={(e) => setAddress({ ...address, name: e.target.value })} className="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition" placeholder="Nama Lengkap" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Nomor Telepon</label>
+                <input value={address.phone} onChange={(e) => setAddress({ ...address, phone: e.target.value })} className="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition" placeholder="08xxxxxxxxxx" type="tel" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Provinsi</label>
+                <input value={address.province} onChange={(e) => setAddress({ ...address, province: e.target.value })} className="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition" placeholder="Pilih Provinsi" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Kota / Kabupaten</label>
+                <input value={address.city} onChange={(e) => setAddress({ ...address, city: e.target.value })} className="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition" placeholder="Pilih Kota / Kabupaten" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Kode Pos</label>
+                <input value={address.zip} onChange={(e) => setAddress({ ...address, zip: e.target.value })} className="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition" placeholder="Kode Pos" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Alamat Lengkap</label>
+                <textarea value={address.detail} onChange={(e) => setAddress({ ...address, detail: e.target.value })} rows={3} className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition resize-none" placeholder="Alamat lengkap, nama jalan, nomor rumah, patokan (opsional)" />
               </div>
 
-              <div className="grid gap-6 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-4">Recipient Name</label>
-                  <input value={address.name} onChange={(e) => setAddress((a) => ({ ...a, name: e.target.value }))} className="w-full h-14 px-6 rounded-2xl bg-secondary/50 border-transparent outline-none transition-all focus:bg-white focus:ring-4 focus:ring-primary/10 focus:border-primary font-medium" placeholder="Full Name" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-4">Phone Number</label>
-                  <input value={address.phone} onChange={(e) => setAddress((a) => ({ ...a, phone: e.target.value }))} className="w-full h-14 px-6 rounded-2xl bg-secondary/50 border-transparent outline-none transition-all focus:bg-white focus:ring-4 focus:ring-primary/10 focus:border-primary font-medium" placeholder="08xxxxxxxxxx" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-4">Province</label>
-                  <input value={address.province} onChange={(e) => setAddress((a) => ({ ...a, province: e.target.value }))} className="w-full h-14 px-6 rounded-2xl bg-secondary/50 border-transparent outline-none transition-all focus:bg-white focus:ring-4 focus:ring-primary/10 focus:border-primary font-medium" placeholder="Province" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-4">City</label>
-                  <input value={address.city} onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))} className="w-full h-14 px-6 rounded-2xl bg-secondary/50 border-transparent outline-none transition-all focus:bg-white focus:ring-4 focus:ring-primary/10 focus:border-primary font-medium" placeholder="City" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-4">Zip Code</label>
-                  <input value={address.zip} onChange={(e) => setAddress((a) => ({ ...a, zip: e.target.value }))} className="w-full h-14 px-6 rounded-2xl bg-secondary/50 border-transparent outline-none transition-all focus:bg-white focus:ring-4 focus:ring-primary/10 focus:border-primary font-medium" placeholder="Postal Code" />
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-4">Full Address Detail</label>
-                  <input value={address.detail} onChange={(e) => setAddress((a) => ({ ...a, detail: e.target.value }))} className="w-full h-14 px-6 rounded-2xl bg-secondary/50 border-transparent outline-none transition-all focus:bg-white focus:ring-4 focus:ring-primary/10 focus:border-primary font-medium" placeholder="Street name, house number, apartment, etc." />
-                </div>
-              </div>
-            </section>
-
-            {/* Courier & Shipping */}
-            <section className="p-8 rounded-[2.5rem] border bg-card shadow-premium">
-              <div className="flex items-center gap-4 mb-8">
-                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                  <Truck className="h-6 w-6" />
-                </div>
-                <h2 className="text-2xl font-black tracking-tight">Delivery Option.</h2>
-              </div>
-
-              <div className="flex flex-wrap gap-4 mb-8">
-                {[
-                  { id: "jne", name: "JNE Express" },
-                  { id: "jnt", name: "J&T Express" },
-                  { id: "sicepat", name: "SiCepat" }
-                ].map((k) => (
-                  <button
-                    key={k.id}
-                    onClick={() => setKurir(k.id)}
-                    className={cn(
-                      "px-8 h-14 rounded-2xl text-xs font-black uppercase tracking-widest transition-all",
-                      kurir === k.id
-                        ? "bg-primary text-white shadow-lg shadow-primary/20"
-                        : "bg-secondary text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    {k.name}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between p-6 rounded-2xl bg-secondary/30">
-                <div className="space-y-1">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Estimated Shipping Fee</div>
-                  <div className="text-xl font-black">{ongkir ? formatIDR(ongkir) : "Not calculated"}</div>
-                </div>
-                <button
-                  onClick={onEstimateOngkir}
-                  className="h-12 px-6 rounded-xl bg-white border text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary hover:text-white transition-all shadow-sm"
+              <div className="flex items-center justify-between pt-2 pb-6 border-b border-gray-100">
+                <span className="text-sm font-semibold text-gray-900">Jadikan sebagai alamat utama</span>
+                <button 
+                  onClick={() => setAddress({...address, isPrimary: !address.isPrimary})}
+                  className={cn("w-11 h-6 rounded-full transition-colors relative", address.isPrimary ? "bg-primary" : "bg-gray-200")}
                 >
-                  Calculate Shipping
+                  <div className={cn("absolute top-1 w-4 h-4 rounded-full bg-white transition-transform shadow-sm", address.isPrimary ? "translate-x-6" : "translate-x-1")} />
                 </button>
               </div>
-            </section>
 
-            {/* Payment Method */}
-            <section className="p-8 rounded-[2.5rem] border bg-card shadow-premium">
-              <div className="flex items-center gap-4 mb-8">
-                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                  <CreditCard className="h-6 w-6" />
-                </div>
-                <h2 className="text-2xl font-black tracking-tight">Payment Method.</h2>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {([
-                  { key: "qris", label: "QRIS Instant" },
-                  { key: "bank_transfer", label: "Bank Transfer" },
-                  { key: "ewallet", label: "E-Wallet" },
-                ] as const).map((m) => (
-                  <button
-                    key={m.key}
-                    onClick={() => setPaymentMethod(m.key)}
-                    className={cn(
-                      "flex flex-col items-center justify-center gap-3 p-6 rounded-[2rem] border transition-all",
-                      paymentMethod === m.key
-                        ? "bg-primary/5 border-primary text-primary"
-                        : "bg-card hover:bg-secondary/50"
-                    )}
-                  >
-                    <div className={cn("h-10 w-10 rounded-full flex items-center justify-center border-2", paymentMethod === m.key ? "border-primary" : "border-border")}>
-                      <div className={cn("h-4 w-4 rounded-full transition-all", paymentMethod === m.key ? "bg-primary scale-100" : "bg-transparent scale-0")} />
-                    </div>
-                    <span className="text-xs font-black uppercase tracking-widest">{m.label}</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-8 flex items-center gap-3 p-4 rounded-2xl bg-emerald-50 text-emerald-700">
-                <ShieldCheck className="h-5 w-5" />
-                <span className="text-[10px] font-bold uppercase tracking-widest">Encrypted and secure payment via Midtrans</span>
-              </div>
-            </section>
+              <button onClick={handleNextStep1} className="w-full h-12 rounded-xl bg-primary text-white text-sm font-bold shadow-glow mt-4 active:scale-[0.98] transition-transform">
+                LANJUT KE PENGIRIMAN
+              </button>
+            </div>
           </div>
+        )}
 
-          <aside className="lg:col-span-4">
-            <div className="p-8 rounded-[2.5rem] bg-[#0d0d0d] text-white shadow-2xl sticky top-24">
-              <h2 className="text-2xl font-black tracking-tight mb-8">Order Summary.</h2>
-              
-              <div className="space-y-4">
-                <div className="flex justify-between text-white/50 text-xs font-bold uppercase tracking-widest">
-                  <span>Items Subtotal</span>
-                  <span className="text-white">{formatIDR(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-white/50 text-xs font-bold uppercase tracking-widest">
-                  <span>Shipping Fee</span>
-                  <span className="text-white">{ongkir ? formatIDR(ongkir) : "—"}</span>
-                </div>
-                
-                <div className="h-[1px] bg-white/10 my-6" />
-                
-                <div className="flex justify-between items-end">
-                  <div className="text-xs font-bold uppercase tracking-widest text-white/50">Grand Total</div>
-                  <div className="text-3xl font-black text-primary">
-                    {ongkir ? formatIDR(subtotal + ongkir) : formatIDR(subtotal)}
+        {/* ── STEP 2: PENGIRIMAN ────────────────────────────────────── */}
+        {step === 2 && (
+          <div className="p-6 animate-in slide-in-from-right-4 duration-300">
+            <h2 className="text-sm font-bold text-gray-900 mb-4">Metode Pengiriman</h2>
+            
+            <div className="space-y-3 mb-8">
+              {shippingOptions.map((opt) => (
+                <div 
+                  key={opt.id} 
+                  onClick={() => setKurir(opt.id)}
+                  className={cn(
+                    "flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all",
+                    kurir === opt.id ? "border-primary bg-rose-50/30" : "border-gray-200 hover:border-primary/50"
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                      <Truck className="h-5 w-5 text-gray-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-gray-900">{opt.label}</div>
+                      <div className="text-xs text-gray-500">{opt.desc}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-gray-900">{opt.price === 0 ? "Gratis" : formatIDR(opt.price)}</span>
+                    <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center", kurir === opt.id ? "border-primary" : "border-gray-300")}>
+                      {kurir === opt.id && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
+                    </div>
                   </div>
                 </div>
+              ))}
+            </div>
+
+            {/* Order Summary (Collapsible) */}
+            <div className="border border-gray-200 rounded-2xl p-4 mb-8">
+              <div 
+                className="flex items-center justify-between cursor-pointer"
+                onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
+              >
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">Ringkasan Pesanan</h3>
+                  <p className="text-xs text-gray-500">{cartLines.length} Produk</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex -space-x-2">
+                    {cartLines.slice(0, 3).map((item, i) => (
+                      <div key={i} className="w-8 h-8 rounded-full border-2 border-white overflow-hidden bg-gray-100 relative">
+                        <Image 
+                          src={item.product.primary_image?.image_path ? `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/storage/${item.product.primary_image.image_path}` : "https://images.unsplash.com/photo-1520975693415-35a64c9fc0c8?auto=format&fit=crop&w=800&q=80"}
+                          alt="Product"
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {isSummaryExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
+                </div>
               </div>
 
-              <button
-                disabled={isSubmitting || !ongkir}
-                onClick={onCreatePayment}
-                className="mt-10 w-full h-20 flex items-center justify-center gap-3 rounded-full bg-primary text-white text-xs font-black uppercase tracking-[0.2em] shadow-xl shadow-primary/20 transition-all hover:bg-primary/90 hover:scale-[1.02] active:scale-95 disabled:opacity-50 group"
-              >
-                {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : (
-                  <>
-                    Confirm Order <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-                  </>
-                )}
-              </button>
+              {isSummaryExpanded && (
+                <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                  {cartLines.map((item) => (
+                    <div key={item.product.id} className="flex justify-between text-sm">
+                      <span className="text-gray-600 line-clamp-1 pr-4">{item.qty}x {item.product.name}</span>
+                      <span className="font-semibold text-gray-900 shrink-0">{formatIDR(item.total)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-              <div className="mt-6 text-center">
-                <Link href="/cart" className="text-xs font-bold uppercase tracking-widest text-white/40 hover:text-white transition-colors">
-                  Edit Shopping Cart
-                </Link>
+              <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Subtotal</span>
+                  <span className="font-semibold text-gray-900">{formatIDR(subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Ongkir</span>
+                  <span className="font-semibold text-gray-900">{formatIDR(ongkir)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-bold pt-2">
+                  <span className="text-gray-900">Total</span>
+                  <span className="text-primary">{formatIDR(subtotal + ongkir)}</span>
+                </div>
               </div>
             </div>
-          </aside>
-        </div>
-      )}
+
+            <button onClick={handleNextStep2} className="w-full h-12 rounded-xl bg-primary text-white text-sm font-bold shadow-glow active:scale-[0.98] transition-transform">
+              LANJUT KE PEMBAYARAN
+            </button>
+          </div>
+        )}
+
+        {/* ── STEP 3: PEMBAYARAN ────────────────────────────────────── */}
+        {step === 3 && (
+          <div className="p-6 animate-in slide-in-from-right-4 duration-300">
+            <h2 className="text-sm font-bold text-gray-900 mb-4">Metode Pembayaran</h2>
+
+            <div className="space-y-3 mb-8">
+              {paymentOptions.map((opt) => (
+                <div 
+                  key={opt.id} 
+                  onClick={() => !opt.disabled && setPaymentMethod(opt.id as any)}
+                  className={cn(
+                    "flex items-center justify-between p-4 rounded-2xl border transition-all",
+                    paymentMethod === opt.id ? "border-primary bg-rose-50/30" : "border-gray-200",
+                    opt.disabled ? "opacity-50 cursor-not-allowed bg-gray-50" : "cursor-pointer hover:border-primary/50"
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                      {/* Using generic icon for simplicity, could map specific icons */}
+                      <ShieldCheck className="h-5 w-5 text-gray-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold text-gray-900">{opt.label}</div>
+                      <div className={cn("text-xs", opt.disabled ? "text-red-500" : "text-gray-500")}>{opt.desc}</div>
+                    </div>
+                  </div>
+                  <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0", paymentMethod === opt.id ? "border-primary" : "border-gray-300")}>
+                    {paymentMethod === opt.id && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="border border-gray-200 rounded-2xl p-4 mb-8">
+              <h3 className="text-sm font-bold text-gray-900 mb-4">Ringkasan Pembayaran</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Subtotal ({cartLines.length} Produk)</span>
+                  <span className="font-semibold text-gray-900">{formatIDR(subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Ongkir</span>
+                  <span className="font-semibold text-gray-900">{formatIDR(ongkir)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Metode Pembayaran</span>
+                  <span className="font-semibold text-gray-900">{paymentOptions.find(o => o.id === paymentMethod)?.label}</span>
+                </div>
+                <div className="h-px bg-gray-100 my-2" />
+                <div className="flex justify-between items-center pt-1">
+                  <span className="text-sm font-bold text-gray-900">Total Pembayaran</span>
+                  <span className="text-lg font-black text-primary">{formatIDR(subtotal + ongkir)}</span>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              disabled={isSubmitting}
+              onClick={onCreatePayment} 
+              className="w-full h-12 rounded-xl bg-primary text-white text-sm font-bold shadow-glow flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-70 disabled:active:scale-100"
+            >
+              {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Lock className="h-4 w-4" />}
+              {isSubmitting ? "MEMPROSES..." : "BUAT PESANAN"}
+            </button>
+            <p className="text-[10px] text-center text-gray-500 mt-4 leading-relaxed">
+              Dengan membuat pesanan, kamu menyetujui<br/>
+              <span className="font-bold text-primary">Syarat & Ketentuan</span> yang berlaku.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-

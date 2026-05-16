@@ -14,15 +14,20 @@ class ProductService
     {
         $query = Product::query()->with(['category', 'primaryImage', 'activeBadge'])->where('is_active', true);
 
-        if (isset($filters['category_slug'])) {
+        if (isset($filters['category_id'])) {
+            $query->where('category_id', $filters['category_id']);
+        } elseif (isset($filters['category_slug'])) {
             $query->whereHas('category', function ($q) use ($filters) {
                 $q->where('slug', $filters['category_slug']);
             });
         }
 
-        if (isset($filters['search'])) {
-            $query->where('name', 'like', '%' . $filters['search'] . '%')
-                  ->orWhere('description', 'like', '%' . $filters['search'] . '%');
+        $searchTerm = $filters['q'] ?? $filters['search'] ?? null;
+        if ($searchTerm) {
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('name', 'like', '%' . $searchTerm . '%')
+                  ->orWhere('description', 'like', '%' . $searchTerm . '%');
+            });
         }
 
         if (isset($filters['brand'])) {

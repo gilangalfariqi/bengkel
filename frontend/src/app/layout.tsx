@@ -11,6 +11,8 @@ import WishlistButton from "@/components/marketplace/WishlistButton";
 import CartButton from "@/components/marketplace/CartButton";
 import Script from "next/script";
 
+import HeaderAuth from "@/components/marketplace/HeaderAuth";
+
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
@@ -87,12 +89,7 @@ export default function RootLayout({
                   <WishlistButton />
                   <CartButton />
                 </div>
-                <Link
-                  href="/login"
-                  className="hidden sm:flex h-9 items-center justify-center rounded-xl bg-primary px-5 text-xs font-bold text-white hover:bg-primary/90 shadow-glow"
-                >
-                  Login
-                </Link>
+                <HeaderAuth />
                 {/* Mobile icons handled by MobileNav */}
                 <MobileNav />
               </div>

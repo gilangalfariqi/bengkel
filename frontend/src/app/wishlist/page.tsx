@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, ShoppingCart, Trash2, ArrowRight } from "lucide-react";
+import { Heart, Trash2, Home, Bell, Loader2, ShoppingCart } from "lucide-react";
+import { motion } from "framer-motion";
 
 import { useWishlistStore } from "@/stores/wishlistStore";
 import { useProductStore } from "@/stores/productStore";
 import { useCartStore } from "@/stores/cartStore";
-
+import { cn } from "@/lib/utils";
 
 function formatIDR(value: number | string) {
   const num = typeof value === "string" ? parseFloat(value) : value;
@@ -17,8 +18,10 @@ function formatIDR(value: number | string) {
 
 export default function WishlistPage() {
   const { productIds, hydrate, toggle } = useWishlistStore();
-  const { products, fetchProducts } = useProductStore();
+  const { products, fetchProducts, isLoading } = useProductStore();
   const { addItem } = useCartStore();
+
+  const [selectedItems, setSelectedItems] = useState<number[]>([]);
 
   useEffect(() => {
     hydrate();
@@ -26,96 +29,172 @@ export default function WishlistPage() {
   }, [hydrate, fetchProducts]);
 
   const wishlistProducts = useMemo(() => {
-    return productIds.map((id) => products.find(p => p.id === id)).filter(Boolean) as typeof products;
+    return productIds.map((id) => products.find((p) => p.id === id)).filter(Boolean) as typeof products;
   }, [productIds, products]);
 
-  return (
-    <div className="container mx-auto px-4 py-12">
-      <div className="flex flex-col gap-8 mb-12">
-        <div className="space-y-2">
-          <h1 className="text-5xl font-black tracking-tight">Wishlist.</h1>
-          <p className="text-muted-foreground text-lg">Your curated collection of premium performance parts.</p>
-        </div>
+  // Clean up selectedItems if an item is removed from the wishlist entirely
+  useEffect(() => {
+    setSelectedItems((prev) => prev.filter((id) => productIds.includes(id)));
+  }, [productIds]);
+
+  const toggleSelect = (id: number) => {
+    setSelectedItems((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const addSelectedToCart = () => {
+    selectedItems.forEach((id) => addItem(id, 1));
+    // Optional: unselect or clear them from wishlist after adding to cart
+    setSelectedItems([]);
+    alert("Berhasil menambahkan item pilihan ke keranjang!");
+  };
+
+  const removeSelectedFromWishlist = () => {
+    selectedItems.forEach((id) => toggle(id));
+    setSelectedItems([]);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
       </div>
+    );
+  }
 
-      {wishlistProducts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center space-y-6">
-          <div className="h-24 w-24 rounded-full bg-secondary flex items-center justify-center text-muted-foreground">
-            <Heart className="h-10 w-10" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-bold">Your wishlist is empty</h2>
-Save the parts you&apos;re eyeing for later.
-          </div>
-          <Link
-            href="/catalog"
-            className="inline-flex h-14 items-center justify-center gap-3 rounded-full bg-primary px-8 text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-primary/20 transition-all hover:scale-105"
-          >
-            Explore Catalog <ArrowRight className="h-4 w-4" />
-          </Link>
+  return (
+    <div className="min-h-screen bg-gray-50 pb-32">
+      {/* ── App Header (Mobile) ────────────────────────────────── */}
+      <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm px-4 h-14 flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-bold text-gray-900 leading-none">Wishlist</h1>
+          <p className="text-[10px] font-semibold text-gray-500 mt-0.5">{wishlistProducts.length} item</p>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          {wishlistProducts.map((p) => {
-            const price = parseFloat(p.discount_price || p.price);
-            const imageUrl = p.primary_image?.image_path 
-              ? `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/storage/${p.primary_image.image_path}`
-              : "https://images.unsplash.com/photo-1520975693415-35a64c9fc0c8?auto=format&fit=crop&w=800&q=80";
+        <div className="flex items-center gap-4 text-gray-600">
+          <Link href="/">
+            <Home className="h-5 w-5" />
+          </Link>
+          <button>
+            <Bell className="h-5 w-5" />
+          </button>
+        </div>
+      </header>
 
-            return (
-              <div key={p.id} className="group relative flex flex-col overflow-hidden rounded-[2rem] border bg-card shadow-premium transition-all hover:shadow-2xl hover:-translate-y-1">
-                <div className="relative aspect-[4/5] overflow-hidden bg-muted">
-                      <button
-                        type="button"
-                        title="Remove from wishlist"
-                        aria-label="Remove from wishlist"
-                        onClick={() => toggle(p.id)}
-                    className="absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary backdrop-blur-xl transition-all hover:scale-110"
+      <div className="container mx-auto px-4 py-4 md:py-8 max-w-4xl">
+        {wishlistProducts.length === 0 ? (
+          /* ── Empty State ────────────────────────────────────────── */
+          <div className="flex flex-col items-center justify-center py-20 text-center bg-white rounded-3xl border border-gray-100 shadow-sm mt-4">
+            <div className="h-20 w-20 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 mb-4">
+              <Heart className="h-10 w-10" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Wishlist masih kosong</h2>
+            <p className="text-sm text-gray-500 max-w-xs mb-8">
+              Simpan produk favoritmu di sini agar mudah ditemukan nanti.
+            </p>
+            <Link
+              href="/catalog"
+              className="inline-flex h-12 items-center justify-center rounded-xl bg-primary px-8 text-xs font-bold text-white transition hover:bg-primary/90 shadow-glow"
+            >
+              JELAJAHI PRODUK
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* ── Wishlist Items ────────────────────────────────────────── */}
+            {wishlistProducts.map((p) => {
+              const isSelected = selectedItems.includes(p.id);
+              const price = parseFloat(p.discount_price || p.price);
+              const imageUrl = p.primary_image?.image_path
+                ? `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/storage/${p.primary_image.image_path}`
+                : "https://images.unsplash.com/photo-1520975693415-35a64c9fc0c8?auto=format&fit=crop&w=800&q=80";
+
+              return (
+                <div
+                  key={p.id}
+                  className={cn(
+                    "flex gap-3 bg-white p-4 rounded-2xl border transition-all relative",
+                    isSelected ? "border-primary/40 bg-rose-50/20" : "border-gray-100 shadow-sm"
+                  )}
+                >
+                  {/* Checkbox */}
+                  <div className="pt-2 shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(p.id)}
+                      className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary accent-primary"
+                    />
+                  </div>
+
+                  {/* Image */}
+                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gray-50 border border-gray-100">
+                    <Image src={imageUrl} alt={p.name} fill className="object-cover" />
+                  </div>
+
+                  {/* Details */}
+                  <div className="flex flex-1 flex-col justify-between min-w-0">
+                    <div className="pr-6">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 truncate">
+                        {p.brand || "Original"}
+                      </p>
+                      <h3 className="text-sm font-bold text-gray-900 leading-snug line-clamp-2 mt-0.5">
+                        {p.name}
+                      </h3>
+                    </div>
+
+                    <div className="font-black text-gray-900 mt-2">
+                      {formatIDR(price)}
+                    </div>
+                  </div>
+
+                  {/* Heart Toggle */}
+                  <button
+                    onClick={() => toggle(p.id)}
+                    className="absolute right-4 top-4 h-8 w-8 flex items-center justify-center rounded-full text-primary hover:bg-rose-50 transition"
                   >
                     <Heart className="h-5 w-5 fill-primary" />
                   </button>
-                  
-                  <Link href={`/products/${p.slug}`} className="block h-full">
-                    <Image src={imageUrl} alt={p.name} fill className="object-cover transition-transform duration-700 group-hover:scale-110" />
-                  </Link>
                 </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-                <div className="flex flex-1 flex-col p-6">
-                  <div className="mb-4">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{p.brand || 'Original'}</div>
-                    <Link href={`/products/${p.slug}`}>
-                      <h3 className="line-clamp-2 text-lg font-bold leading-tight hover:text-primary transition-colors">{p.name}</h3>
-                    </Link>
-                  </div>
+      {/* ── Sticky Bulk Action Bar ────────────────────────────── */}
+      {selectedItems.length > 0 && (
+        <motion.div
+          initial={{ y: 50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="fixed bottom-[4rem] md:bottom-0 inset-x-0 bg-white border-t border-gray-100 p-4 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] z-50"
+        >
+          <div className="container mx-auto max-w-4xl flex items-center justify-between gap-4">
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-gray-900">{selectedItems.length} item dipilih</span>
+            </div>
 
-                  <div className="mt-auto">
-                    <div className="text-xl font-black mb-6">{formatIDR(price)}</div>
-                    <div className="flex gap-2">
-                      <button
-                        title="Add to cart"
-                        onClick={() => addItem(p.id, 1)}
-                        disabled={p.stock <= 0}
-                        className="flex-1 flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground text-white text-[10px] font-black uppercase tracking-widest transition-all hover:bg-primary disabled:opacity-50"
-                      >
-                        <ShoppingCart className="h-3.5 w-3.5" /> Add
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Remove from wishlist"
-                        onClick={() => toggle(p.id)}
-                        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-secondary text-muted-foreground hover:text-primary transition-colors"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+            <div className="flex items-center gap-3">
+              {/* Add to Cart Bulk */}
+              <button
+                onClick={addSelectedToCart}
+                className="flex h-10 px-6 items-center justify-center rounded-xl bg-primary text-[10px] font-bold uppercase tracking-wide text-white transition-all hover:bg-primary/90 shadow-glow"
+              >
+                <ShoppingCart className="h-3.5 w-3.5 mr-2" />
+                Tambah Ke Keranjang
+              </button>
+
+              {/* Delete Bulk */}
+              <button
+                onClick={removeSelectedFromWishlist}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 text-gray-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </motion.div>
       )}
     </div>
   );
 }
-

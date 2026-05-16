@@ -3,21 +3,14 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, SlidersHorizontal, LayoutGrid, List } from "lucide-react";
+import { Search, LayoutGrid, List } from "lucide-react";
 
 import ProductCard from "@/components/marketplace/ProductCard";
 import ProductSkeleton from "@/components/marketplace/ProductSkeleton";
+import CategoryScroll from "@/components/marketplace/CategoryScroll";
+import HelpCard from "@/components/marketplace/HelpCard";
 import { useProductStore } from "@/stores/productStore";
 import { cn } from "@/lib/utils";
-
-const CATEGORIES = [
-  { id: null, name: "All Products" },
-  { id: 1, name: "Mesin" },
-  { id: 2, name: "Body Part" },
-  { id: 3, name: "Kelistrikan" },
-  { id: 4, name: "Ban & Velg" },
-  { id: 5, name: "Aksesoris" },
-];
 
 function CatalogInner() {
   const router = useRouter();
@@ -26,8 +19,9 @@ function CatalogInner() {
 
   const [search, setSearch] = useState(searchParams.get("q") || "");
   const [selectedCategory, setSelectedCategory] = useState<number | null>(
-    searchParams.get("category") ? parseInt(searchParams.get("category")!) : null
+    searchParams.get("category_id") ? parseInt(searchParams.get("category_id")!) : null
   );
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   useEffect(() => {
     fetchProducts({
@@ -39,132 +33,136 @@ function CatalogInner() {
   const updateFilters = (newCategory: number | null) => {
     setSelectedCategory(newCategory);
     const params = new URLSearchParams(searchParams.toString());
-    if (newCategory) params.set("category", newCategory.toString());
-    else params.delete("category");
+    if (newCategory) params.set("category_id", newCategory.toString());
+    else params.delete("category_id");
     router.push(`/catalog?${params.toString()}`, { scroll: false });
   };
 
   return (
-    <div className="container mx-auto px-4 py-20 min-h-screen">
-      {/* Header & Search */}
-      <div className="flex flex-col gap-12 mb-20">
-        <div className="space-y-4 max-w-2xl">
-          <div className="text-xs font-black uppercase tracking-[0.4em] text-primary">Marketplace</div>
-          <h1 className="text-6xl md:text-8xl font-black tracking-tighter">Catalog.</h1>
-          <p className="text-muted-foreground text-xl leading-relaxed">Explore our curated collection of high-performance spareparts and original components.</p>
-        </div>
-
-        <div className="relative max-w-3xl group">
-          <Search className="absolute left-6 top-1/2 -translate-y-1/2 h-6 w-6 text-muted-foreground transition-all duration-300 group-focus-within:text-primary group-focus-within:scale-110" />
-          <input
-            type="text"
-            placeholder="Search by part name, brand, or SKU..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-20 pl-16 pr-8 rounded-[2.5rem] border-2 border-border bg-card/40 backdrop-blur-xl text-xl font-bold outline-none transition-all focus:ring-8 focus:ring-primary/5 focus:border-primary shadow-premium"
-          />
-          <div className="absolute right-6 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-secondary text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-            <span className="opacity-50">ESC to Clear</span>
-          </div>
-        </div>
+    <div className="bg-gray-50 min-h-screen pb-24">
+      {/* ── Mobile Category Scroll ──────────────────────────────── */}
+      <div className="md:hidden sticky top-14 z-40 bg-white/80 backdrop-blur-xl border-b border-gray-100 pb-1 pt-2">
+        <CategoryScroll selected={selectedCategory} onChange={updateFilters} />
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-16">
-        {/* Filters Sidebar */}
-        <aside className="w-full lg:w-72 shrink-0 space-y-10">
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.3em] text-primary">
-              <SlidersHorizontal className="h-4 w-4" /> Category Filter
+      <div className="container mx-auto px-4 py-6 lg:py-10">
+        <div className="flex flex-col lg:flex-row gap-8">
+          
+          {/* ── Desktop Sidebar Filters ─────────────────────────── */}
+          <aside className="hidden md:block w-72 shrink-0 space-y-6">
+            <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">Kategori</h3>
+              <div className="space-y-1">
+                {[{ id: null, name: "Semua Kategori" }, { id: 1, name: "Mesin" }, { id: 2, name: "Body Part" }, { id: 3, name: "Kelistrikan" }, { id: 4, name: "Ban & Velg" }, { id: 5, name: "Aksesoris" }].map((cat) => (
+                  <button
+                    key={cat.name}
+                    onClick={() => updateFilters(cat.id)}
+                    className={cn(
+                      "w-full text-left px-3 py-2 rounded-lg text-sm font-semibold transition-colors",
+                      selectedCategory === cat.id
+                        ? "bg-primary/10 text-primary"
+                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    )}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex flex-wrap lg:flex-col gap-3">
-              {CATEGORIES.map((cat) => (
+
+            <HelpCard />
+          </aside>
+
+          {/* ── Main Content ────────────────────────────────────── */}
+          <div className="flex-1 min-w-0">
+            {/* Help Card on Mobile */}
+            <div className="md:hidden mb-6">
+              <HelpCard />
+            </div>
+
+            {/* Toolbar */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="text-sm font-bold text-gray-900">
+                Ditemukan {products.length} Produk
+              </div>
+              <div className="flex items-center gap-2">
                 <button
-                  key={cat.name}
-                  onClick={() => updateFilters(cat.id)}
+                  type="button"
+                  onClick={() => setViewMode("grid")}
                   className={cn(
-                    "px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 text-left relative overflow-hidden group",
-                    selectedCategory === cat.id
-                      ? "bg-foreground text-background shadow-premium"
-                      : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground hover:translate-x-1"
+                    "p-2 rounded-lg transition-colors border",
+                    viewMode === "grid" ? "bg-white text-primary border-primary shadow-sm" : "bg-transparent text-gray-400 border-transparent hover:text-gray-600"
                   )}
                 >
-                  <span className="relative z-10">{cat.name}</span>
-                  {selectedCategory === cat.id && (
-                    <motion.div layoutId="activeCat" className="absolute inset-0 bg-primary/10 -z-0" />
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  className={cn(
+                    "p-2 rounded-lg transition-colors border hidden sm:flex",
+                    viewMode === "list" ? "bg-white text-primary border-primary shadow-sm" : "bg-transparent text-gray-400 border-transparent hover:text-gray-600"
                   )}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-8 rounded-[2.5rem] bg-primary/5 border border-primary/10 space-y-4">
-            <h4 className="font-black tracking-tight">Need Assistance?</h4>
-Can&apos;t find the specific part? Our specialists are ready to help you find the perfect fit.
-            <button className="w-full py-3 rounded-xl bg-primary text-[10px] font-black uppercase tracking-widest text-white shadow-glow">Contact Specialist</button>
-          </div>
-        </aside>
-
-        {/* Product Grid */}
-        <div className="flex-1">
-          <div className="flex items-center justify-between mb-12 pb-6 border-b-2 border-border/50">
-            <div className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.3em]">
-              Found {products.length} Results
-            </div>
-            <div className="flex items-center gap-3">
-              <button type="button" title="Grid view" aria-label="Grid view" className="p-3 rounded-xl bg-foreground text-background shadow-premium transition-transform hover:scale-105 active:scale-95">
-                <LayoutGrid className="h-5 w-5" />
-              </button>
-              <button type="button" title="List view" aria-label="List view" className="p-3 rounded-xl bg-secondary text-muted-foreground transition-transform hover:scale-105 active:scale-95">
-                <List className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-
-          <AnimatePresence mode="popLayout">
-            {isLoading ? (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
-              >
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                  <ProductSkeleton key={i} />
-                ))}
-              </motion.div>
-            ) : products.length > 0 ? (
-              <motion.div 
-                layout
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
-              >
-                {products.map((p) => (
-                  <ProductCard key={p.id} product={p} />
-                ))}
-              </motion.div>
-            ) : (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-col items-center justify-center py-32 text-center space-y-8"
-              >
-                <div className="h-24 w-24 rounded-[2rem] bg-secondary flex items-center justify-center text-muted-foreground animate-float">
-                  <Search className="h-10 w-10" />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-2xl font-black tracking-tight">No products found</h3>
-We can&apos;t find anything matching your current filters. Try broadening your search.
-                </div>
-                <button 
-                  onClick={() => { setSearch(""); updateFilters(null); }}
-                  className="px-8 py-4 rounded-full bg-primary text-[10px] font-black uppercase tracking-widest text-white shadow-glow"
                 >
-                  Reset All Filters
+                  <List className="h-4 w-4" />
                 </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              </div>
+            </div>
+
+            {/* Product Grid */}
+            <AnimatePresence mode="popLayout">
+              {isLoading ? (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className={cn(
+                    "grid gap-4",
+                    viewMode === "grid" ? "grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" : "grid-cols-1"
+                  )}
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                    <ProductSkeleton key={i} />
+                  ))}
+                </motion.div>
+              ) : products.length > 0 ? (
+                <motion.div
+                  layout
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className={cn(
+                    "grid gap-4",
+                    viewMode === "grid" ? "grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" : "grid-cols-1"
+                  )}
+                >
+                  {products.map((p) => (
+                    <ProductCard key={p.id} product={p} />
+                  ))}
+                </motion.div>
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col items-center justify-center py-20 text-center space-y-6"
+                >
+                  <div className="h-20 w-20 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
+                    <Search className="h-8 w-8" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 mb-1">Produk tidak ditemukan</h3>
+                    <p className="text-sm text-gray-500">Coba ubah filter atau kata kunci pencarian Anda.</p>
+                  </div>
+                  <button
+                    onClick={() => { setSearch(""); updateFilters(null); }}
+                    className="px-6 py-2.5 rounded-xl bg-primary text-xs font-bold uppercase tracking-wide text-white shadow-glow"
+                  >
+                    Reset Filter
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
         </div>
       </div>
     </div>
@@ -173,11 +171,8 @@ We can&apos;t find anything matching your current filters. Try broadening your s
 
 export default function CatalogPage() {
   return (
-    <Suspense fallback={<div className="container mx-auto px-4 py-20">Loading catalog...</div>}>
+    <Suspense fallback={<div className="container mx-auto px-4 py-20 animate-pulse">Loading catalog...</div>}>
       <CatalogInner />
     </Suspense>
   );
 }
-
-
-
