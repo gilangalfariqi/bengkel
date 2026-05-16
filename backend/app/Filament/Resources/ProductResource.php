@@ -69,7 +69,28 @@ class ProductResource extends Resource
                             Forms\Components\Toggle::make('is_primary')
                                 ->default(false),
                         ])->columns(2)
-                ])
+                ]),
+
+                Section::make('Badges & Promotions')->schema([
+                    Forms\Components\Repeater::make('badges')
+                        ->relationship('badges')
+                        ->schema([
+                            Forms\Components\TextInput::make('label')
+                                ->placeholder('Promo, Best Seller, New …')
+                                ->required()
+                                ->maxLength(50),
+                            Forms\Components\ColorPicker::make('color')
+                                ->default('#E11D48'),
+                            Forms\Components\Toggle::make('is_active')
+                                ->default(true),
+                            Forms\Components\DateTimePicker::make('starts_at')
+                                ->label('Start (optional)'),
+                            Forms\Components\DateTimePicker::make('ends_at')
+                                ->label('End (optional)'),
+                        ])->columns(2)
+                        ->addActionLabel('Add Badge')
+                        ->collapsible(),
+                ]),
             ]);
     }
 

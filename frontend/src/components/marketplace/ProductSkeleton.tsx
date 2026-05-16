@@ -2,20 +2,26 @@
 
 export default function ProductSkeleton() {
   return (
-    <div className="flex flex-col overflow-hidden rounded-[2.5rem] border border-white/20 dark:border-white/5 bg-card/40 backdrop-blur-md shadow-premium h-full">
-      <div className="relative aspect-[4/5] bg-muted animate-pulse" />
-      <div className="flex flex-1 flex-col p-6 space-y-4">
-        <div className="space-y-2">
-          <div className="h-2 w-20 bg-muted animate-pulse rounded-full" />
-          <div className="h-6 w-full bg-muted animate-pulse rounded-lg" />
-          <div className="h-6 w-2/3 bg-muted animate-pulse rounded-lg" />
+    <div className="flex flex-col overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-sm h-full">
+      {/* Image */}
+      <div className="relative aspect-square animate-shimmer" />
+
+      {/* Content */}
+      <div className="flex flex-1 flex-col p-3 space-y-2">
+        {/* Brand + Rating row */}
+        <div className="flex items-center justify-between">
+          <div className="h-2 w-14 rounded bg-gray-100 animate-shimmer" />
+          <div className="h-2 w-12 rounded bg-gray-100 animate-shimmer" />
         </div>
-        <div className="mt-auto space-y-4">
-          <div className="flex items-baseline gap-2">
-            <div className="h-8 w-32 bg-muted animate-pulse rounded-lg" />
-            <div className="h-4 w-16 bg-muted animate-pulse rounded-lg" />
-          </div>
-          <div className="h-14 w-full bg-muted animate-pulse rounded-3xl" />
+        {/* Name */}
+        <div className="space-y-1.5">
+          <div className="h-3 w-full rounded bg-gray-100 animate-shimmer" />
+          <div className="h-3 w-2/3 rounded bg-gray-100 animate-shimmer" />
+        </div>
+        {/* Price */}
+        <div className="mt-auto pt-1 space-y-2">
+          <div className="h-4 w-24 rounded bg-gray-100 animate-shimmer" />
+          <div className="h-9 w-full rounded-xl bg-gray-100 animate-shimmer" />
         </div>
       </div>
     </div>

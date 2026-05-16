@@ -1,5 +1,14 @@
 import { apiFetch } from "./api/http";
 
+export interface ProductBadge {
+  id: number;
+  label: string;
+  color: string;
+  is_active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+}
+
 export interface Product {
   id: number;
   category_id: number;
@@ -12,8 +21,8 @@ export interface Product {
   weight: number;
   brand: string | null;
   specifications: Record<string, unknown>;
-
   is_active: boolean;
+  active_badge?: ProductBadge | null;
   category: {
     id: number;
     name: string;

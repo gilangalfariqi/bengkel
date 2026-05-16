@@ -12,7 +12,7 @@ class ProductService
      */
     public function listProducts(array $filters): LengthAwarePaginator
     {
-        $query = Product::query()->with(['category', 'primaryImage'])->where('is_active', true);
+        $query = Product::query()->with(['category', 'primaryImage', 'activeBadge'])->where('is_active', true);
 
         if (isset($filters['category_slug'])) {
             $query->whereHas('category', function ($q) use ($filters) {

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import "./globals.css";
@@ -11,22 +11,19 @@ import WishlistButton from "@/components/marketplace/WishlistButton";
 import CartButton from "@/components/marketplace/CartButton";
 import Script from "next/script";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
   title: {
-    default: "Bengkel Spare Parts",
-    template: "%s | Bengkel Spare Parts",
+    default: "BengkelPro — Sparepart Motor Premium",
+    template: "%s | BengkelPro",
   },
-  description: "Marketplace spare parts motor, aman, cepat, dan terpercaya.",
+  description: "Marketplace spare part motor terlengkap. Temukan produk original, cepat, aman, dan terpercaya.",
+  keywords: ["sparepart motor", "sparepart online", "bengkel", "otomotif"],
 };
 
 export default function RootLayout({
@@ -35,70 +32,69 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">
+    <html lang="id" className={`${inter.variable} h-full`}>
+      <body className="min-h-full flex flex-col bg-background antialiased">
         <LayoutStateHydrator>
-          <header className="sticky top-0 z-50 glass transition-all duration-500 hover:bg-background/80">
-            <div className="container mx-auto flex h-24 items-center gap-12 px-4">
-              <Link href="/" className="flex items-center gap-4 group">
-                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary text-white shadow-glow transition-all duration-500 group-hover:scale-110 group-hover:rotate-3">
-                  <span className="text-xl font-black italic">BP</span>
+          {/* ── Sticky Header ─────────────────────────────────────── */}
+          <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-xl border-b border-gray-100 shadow-sm">
+            <div className="flex items-center gap-3 px-4 h-14 md:h-16 md:container md:mx-auto md:px-6">
+
+              {/* Logo */}
+              <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
+                <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-white shadow-glow transition-all duration-300 group-hover:scale-105">
+                  <span className="text-sm font-black italic">BP</span>
                 </div>
-                <div className="leading-none">
-                  <div className="text-2xl font-black tracking-tighter uppercase">BENGKEL<span className="text-primary italic">PRO</span></div>
-                  <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.4em] mt-1">Premium Spares</div>
+                <div className="leading-none hidden sm:block">
+                  <div className="text-base font-black tracking-tight uppercase text-gray-900">
+                    BENGKEL<span className="text-primary">PRO</span>
+                  </div>
+                  <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mt-0.5">
+                    Premium Spares
+                  </div>
                 </div>
               </Link>
 
-              <div className="hidden flex-1 items-center max-w-2xl md:flex">
-                <div className="relative w-full group">
-                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-all duration-300" />
-                  <input
-                    className="w-full h-14 rounded-2xl border-2 border-border/50 bg-secondary/30 pl-14 pr-6 text-sm font-bold outline-none transition-all focus:ring-8 focus:ring-primary/5 focus:border-primary/50 shadow-premium"
-                    placeholder="Search premium spareparts..."
-                    aria-label="Search"
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-secondary text-[9px] font-black uppercase tracking-widest text-muted-foreground opacity-50">
-                    <span className="px-1 border rounded">⌘</span>
-                    <span>K</span>
-                  </div>
-                </div>
+              {/* Search Bar — full width on mobile */}
+              <div className="flex-1 relative group mx-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-primary transition-colors" />
+                <input
+                  className="w-full h-10 rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-4 text-sm font-medium outline-none transition-all focus:ring-2 focus:ring-primary/20 focus:border-primary/60 placeholder:text-gray-400"
+                  placeholder="Cari produk, part, atau kategori..."
+                  aria-label="Search"
+                />
               </div>
 
-              <div className="flex items-center gap-6">
-                <nav className="hidden items-center gap-8 lg:flex">
-                  {[
-                    { label: "Catalog", href: "/catalog" },
-                    { label: "Performance", href: "/catalog?category=mesin" },
-                    { label: "Exterior", href: "/catalog?category=body" },
-                  ].map((link) => (
-                    <Link 
-                      key={link.label}
-                      href={link.href} 
-                      className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground hover:text-primary transition-all duration-300 hover:-translate-y-0.5"
-                    >
-                      {link.label}
-                    </Link>
-                  ))}
-                </nav>
-
-                <div className="flex items-center gap-3 pl-6 border-l border-white/10">
-                  <div className="hidden sm:flex items-center gap-3">
-                    <WishlistButton />
-                    <CartButton />
-                  </div>
-                  
-                  <div className="h-8 w-[1px] bg-border/50 mx-2 hidden sm:block" />
-                  
+              {/* Desktop Nav */}
+              <nav className="hidden lg:flex items-center gap-6">
+                {[
+                  { label: "Catalog", href: "/catalog" },
+                  { label: "Mesin", href: "/catalog?category_id=1" },
+                  { label: "Body Part", href: "/catalog?category_id=2" },
+                ].map((link) => (
                   <Link
-                    href="/login"
-                    className="hidden sm:flex h-12 items-center justify-center rounded-full bg-foreground px-8 text-[10px] font-black uppercase tracking-[0.3em] text-background transition-all duration-500 hover:bg-primary hover:text-white shadow-premium hover:shadow-glow"
+                    key={link.label}
+                    href={link.href}
+                    className="text-xs font-semibold text-gray-500 hover:text-primary transition-colors"
                   >
-                    Login
+                    {link.label}
                   </Link>
-                  
-                  <MobileNav />
+                ))}
+              </nav>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="hidden sm:flex items-center gap-2">
+                  <WishlistButton />
+                  <CartButton />
                 </div>
+                <Link
+                  href="/login"
+                  className="hidden sm:flex h-9 items-center justify-center rounded-xl bg-primary px-5 text-xs font-bold text-white hover:bg-primary/90 shadow-glow"
+                >
+                  Login
+                </Link>
+                {/* Mobile icons handled by MobileNav */}
+                <MobileNav />
               </div>
             </div>
           </header>
@@ -107,6 +103,7 @@ export default function RootLayout({
 
           <MarketplaceFooter />
         </LayoutStateHydrator>
+
         <Script
           src="https://app.sandbox.midtrans.com/snap/snap.js"
           data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
