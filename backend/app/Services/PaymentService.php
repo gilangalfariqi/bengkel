@@ -22,30 +22,13 @@ class PaymentService
      */
     public function initiatePayment(Order $order): Payment
     {
-        $params = [
-            'transaction_details' => [
-                'order_id'     => $order->order_number,
-                'gross_amount' => (int) $order->total_amount,
-            ],
-            'customer_details' => [
-                'first_name' => $order->user->name,
-                'email'      => $order->user->email,
-            ],
-        ];
-
-        try {
-            $snapToken = $this->midtrans->getSnapToken($params);
-
-            return Payment::create([
-                'order_id'   => $order->id,
-                'status'     => 'pending',
-                'amount'     => $order->total_amount,
-                'snap_token' => $snapToken,
-            ]);
-        } catch (\Exception $e) {
-            \Log::error('Midtrans Error: ' . $e->getMessage());
-            throw $e;
-        }
+        return Payment::create([
+            'order_id'     => $order->id,
+            'status'       => 'pending',
+            'amount'       => $order->total_amount,
+            'snap_token'   => null,
+            'payment_type' => 'whatsapp',
+        ]);
     }
 
     /**

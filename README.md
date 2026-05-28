@@ -1,190 +1,91 @@
-# Bengkel Marketplace (Laravel + Next.js)
+# BengkelPro Monorepo (Laravel Backend + Next.js Frontend)
 
-Full-stack marketplace application with:
-- **Backend:** Laravel (REST API)
-- **Frontend:** Next.js (SPA-style pages)
-- **Auth:** Bearer token using **Laravel Sanctum**
-- **Payments:** **Midtrans** (create payment + handle notification webhook)
+BengkelPro is a premium, mobile-first motorcycle sparepart online catalog and marketplace built using a monorepo architecture. The application features a high-fidelity Gen-Z dark theme UI and coordinates checkouts directly through WhatsApp.
 
----
+## Repository Structure
 
-## Features
-
-### Marketplace
-- Products browsing
-- Cart management
-- Orders management
-
-### Authentication
-- Register / Login
-- Password reset
-- Logout
-- Fetch current user (`/auth/me`)
-- Update profile / change password
-
-### Payments (Midtrans)
-- Create Midtrans payment for a pending order
-- Webhook endpoint to handle Midtrans notifications
-
-### Shipping
-- Province/city lookup
-- Shipping cost calculation
+The project is divided into two primary directory spaces:
+*   `backend/` - Laravel REST API handles seeders, database schema migrations, authentication endpoints (Laravel Sanctum), and product listings.
+*   `frontend/` - Next.js App Router application written in TypeScript, featuring client state management, responsive designs, and WhatsApp order builders.
 
 ---
 
-## API Overview
+## Architecture Design (Clean Architecture)
 
-All endpoints are intended to be available under the `/api` prefix.
+The frontend is structured using **Clean Architecture** patterns to keep components, states, and data models cleanly separated and easy to debug:
 
-### Public
-- `GET /api/health`
-
-### Auth
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/forgot-password`
-- `POST /api/auth/reset-password`
-
-Protected (Bearer token, `auth:sanctum`):
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-- `PUT /api/auth/profile`
-- `PUT /api/auth/change-password`
-
-### Products
-- `GET /api/products`
-- `GET /api/products/{slug}`
-
-### Cart (protected)
-- `GET /api/cart`
-- `POST /api/cart`
-- `PUT /api/cart/{productId}`
-- `DELETE /api/cart/{productId}`
-- `DELETE /api/cart`
-
-### Orders (protected)
-- `POST /api/orders`
-- `GET /api/orders`
-- `GET /api/orders/{id}`
-
-### Payments (protected)
-- `POST /api/payments/create`
-
-Webhook (public):
-- `POST /api/payments/notification`
-
-### Shipping
-- `GET /api/shipping/provinces`
-- `GET /api/shipping/cities/{provinceId}`
-- `POST /api/shipping/cost`
+```
+frontend/src/
+├── app/                  # Next.js App Router Pages and Layouts
+├── domain/               # Enterprise / Business Logic
+│   └── entities/         # Domain Types & Interfaces (User, Product, Order, Cart)
+├── data/                 # Data Layer (Gateways, Repositories, APIs)
+│   ├── api/              # HttpClient client and low-level fetch wrappers
+│   └── services/         # API Service clients (productService, cartService, etc.)
+├── presentation/         # Interface Layer
+│   ├── components/       # Layouts, UI primitives, and product features
+│   ├── hooks/            # Shared custom React hooks (useDebounce, useScrollDirection)
+│   └── stores/           # Zustand state management stores (auth, cart, products)
+└── lib/                  # Utilities (formatters, WhatsApp string builders)
+```
 
 ---
 
-## Authentication (How the frontend calls the API)
+## Core Flow: WhatsApp Checkout
 
-The Next.js frontend sends requests with:
-- `Authorization: Bearer <token>`
-- Token stored in `localStorage` under the key: **`bengkel_auth`**
-
-If the API returns **401**, the frontend clears `bengkel_auth`.
-
----
-
-## Midtrans Payment Flow
-
-1. User creates an **order** (`POST /api/orders`).
-2. Frontend requests a Midtrans payment token:
-   - `POST /api/payments/create` with `{ order_id }`
-3. Frontend opens the Midtrans popup using `snap_token`.
-4. Midtrans calls the backend webhook:
-   - `POST /api/payments/notification`
-5. Backend updates order/payment status accordingly.
-
-Implementation notes (from code):
-- `payments/create` uses a DB transaction + row locking to avoid race conditions.
-- Duplicate successful payments are prevented.
-- If an existing pending/challenge payment exists, it reuses the existing `snap_token`.
+BengkelPro completely replaces complex payment gateways and automatic shipping APIs with a **WhatsApp-based Checkout system**:
+1.  **Selection**: Users browse parts, select attributes, and add them to their shopping cart.
+2.  **Checkout Gate**: Users must log in (or register) to place an order.
+3.  **Shipping Information**: Users fill out a checkout form providing their full name, phone number, and detailed shipping address.
+4.  **WhatsApp Dispatch**: Clicking "Pesan via WhatsApp" clears the cart, automatically compiles a beautifully formatted order message (listing products, quantities, prices, address details, and order timestamp), and routes them to the WhatsApp API.
+5.  **Fulfillment**: The admin receives the order summary via WhatsApp to confirm stock availability and calculate shipping costs manually.
 
 ---
 
 ## Local Setup
 
-### 1) Backend (Laravel)
+### 1. Backend (Laravel API)
 
-**Directory:** `backend/`
+1.  Navigate to the directory and install Composer dependencies:
+    ```bash
+    cd backend
+    composer install
+    ```
+2.  Copy the local configuration file:
+    ```bash
+    cp .env.example .env
+    ```
+3.  Configure database credentials in `.env` and run migrations with seed data:
+    ```bash
+    php artisan key:generate
+    php artisan migrate:fresh --seed
+    ```
+4.  Launch the Laravel development server:
+    ```bash
+    php artisan serve
+    ```
+    *By default, this runs on `http://localhost:8000`.*
 
-1. Install dependencies:
-```bash
-cd backend
-composer install
-```
-2. Copy env:
-```bash
-copy .env.example .env
-```
-3. Configure environment variables:
-- Database connection
-- Sanctum / auth settings
-- **Midtrans** keys (at minimum):
-  - `MIDTRANS_SERVER_KEY`
-  - `MIDTRANS_CLIENT_KEY`
-  - optional:
-    - `MIDTRANS_IS_PRODUCTION`
-    - `MIDTRANS_IS_SANITIZED`
-    - `MIDTRANS_IS_3DS`
-4. Generate app key:
-```bash
-php artisan key:generate
-```
-5. Run migrations + seed (if desired):
-```bash
-php artisan migrate
-php artisan db:seed
-```
-6. Start dev server:
-```bash
-php artisan serve
-```
+### 2. Frontend (Next.js App)
 
-### 2) Frontend (Next.js)
-
-**Directory:** `frontend/`
-
-1. Install dependencies:
-```bash
-cd frontend
-npm install
-```
-2. Configure API base URL:
-- Set `NEXT_PUBLIC_API_BASE_URL` in your frontend environment.
-- Default in code: `http://localhost:8000`
-3. Run dev server:
-```bash
-npm run dev
-```
-
----
-
-## CORS
-
-CORS is handled in the backend configuration (`backend/config/cors.php`).
-If frontend requests fail, verify allowed origins and headers for your dev domain/port.
-
----
-
-## Repo Structure
-
-- `backend/` - Laravel API + controllers + models + payment webhook handling
-- `frontend/` - Next.js UI + API client layer
-
----
-
-## Testing
-
-Backend tests exist under `backend/tests/` (feature + unit).
+1.  Navigate to the directory and install Node dependencies:
+    ```bash
+    cd ../frontend
+    npm install
+    ```
+2.  Configure environment variables in `.env.local`:
+    ```env
+    NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+    NEXT_PUBLIC_ADMIN_WHATSAPP_PHONE=6281234567890
+    ```
+3.  Start the Next.js development server:
+    ```bash
+    npm run dev
+    ```
+    *Open `http://localhost:3000` in your browser.*
 
 ---
 
 ## License
 
-Add your license information here (e.g., MIT).
+MIT License.

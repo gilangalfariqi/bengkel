@@ -2,110 +2,132 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
 import { Search } from "lucide-react";
+import { Toaster } from "@/presentation/components/ui/sonner";
 import "./globals.css";
 
-import MarketplaceFooter from "@/components/marketplace/MarketplaceFooter";
-import LayoutStateHydrator from "@/components/marketplace/LayoutStateHydrator";
-import MobileNav from "@/components/marketplace/MobileNav";
-import WishlistButton from "@/components/marketplace/WishlistButton";
-import CartButton from "@/components/marketplace/CartButton";
-import Script from "next/script";
-
-import HeaderAuth from "@/components/marketplace/HeaderAuth";
+import MarketplaceFooter from "@/presentation/components/layout/MarketplaceFooter";
+import LayoutStateHydrator from "@/presentation/components/layout/LayoutStateHydrator";
+import HeaderActions from "@/presentation/components/layout/HeaderActions";
 
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
+  weight: ["400", "500", "600", "700", "800", "900"],
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
   title: {
     default: "BengkelPro — Sparepart Motor Premium",
     template: "%s | BengkelPro",
   },
-  description: "Marketplace spare part motor terlengkap. Temukan produk original, cepat, aman, dan terpercaya.",
-  keywords: ["sparepart motor", "sparepart online", "bengkel", "otomotif"],
+  description:
+    "Marketplace sparepart motor terlengkap. Temukan produk original, harga terbaik, dan pesan langsung via WhatsApp. Pengiriman cepat ke seluruh Indonesia.",
+  keywords: [
+    "sparepart motor",
+    "sparepart online",
+    "bengkel motor",
+    "otomotif",
+    "mesin motor",
+    "body part motor",
+    "ban motor",
+    "kelistrikan motor",
+  ],
+  openGraph: {
+    type: "website",
+    locale: "id_ID",
+    siteName: "BengkelPro",
+    title: "BengkelPro — Sparepart Motor Premium",
+    description:
+      "Marketplace sparepart motor terlengkap. Pesan via WhatsApp, cepat dan terpercaya.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "BengkelPro — Sparepart Motor Premium",
+    description: "Marketplace sparepart motor terlengkap.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="id" className={`${inter.variable} h-full`}>
+    <html lang="id" className={`${inter.variable} h-full dark`}>
       <body className="min-h-full flex flex-col bg-background antialiased">
         <LayoutStateHydrator>
-          {/* ── Sticky Header ─────────────────────────────────────── */}
-          <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-xl border-b border-gray-100 shadow-sm">
-            <div className="flex items-center gap-3 px-4 h-14 md:h-16 md:container md:mx-auto md:px-6">
-
+          {/* ── Header ─────────────────────────────────────────── */}
+          <header
+            className="sticky top-0 z-50 glass-header"
+            role="banner"
+          >
+            <div className="flex items-center gap-3 px-4 h-14 md:h-[3.75rem] md:container md:mx-auto md:max-w-7xl md:px-6">
               {/* Logo */}
-              <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-white shadow-glow transition-all duration-300 group-hover:scale-105">
-                  <span className="text-sm font-black italic">BP</span>
+              <Link
+                href="/"
+                className="flex items-center gap-2.5 shrink-0 group"
+                aria-label="BengkelPro — Halaman utama"
+              >
+                <div className="grid h-8 w-8 place-items-center rounded-xl bg-primary text-white shadow-glow-sm transition-transform duration-300 group-hover:scale-105 shrink-0">
+                  <span className="text-[11px] font-black italic">BP</span>
                 </div>
                 <div className="leading-none hidden sm:block">
-                  <div className="text-base font-black tracking-tight uppercase text-gray-900">
+                  <div className="text-sm font-black tracking-tight uppercase text-foreground">
                     BENGKEL<span className="text-primary">PRO</span>
                   </div>
-                  <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mt-0.5">
-                    Premium Spares
+                  <div className="text-[8px] font-bold text-muted-foreground uppercase tracking-widest mt-0.5">
+                    Sparepart Motor
                   </div>
                 </div>
               </Link>
 
-              {/* Search Bar — full width on mobile */}
-              <div className="flex-1 relative group mx-2">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-focus-within:text-primary transition-colors" />
+              {/* Search bar */}
+              <form
+                action="/catalog"
+                method="get"
+                className="flex-1 relative group mx-2"
+                role="search"
+              >
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors pointer-events-none" />
                 <input
-                  className="w-full h-10 rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-4 text-sm font-medium outline-none transition-all focus:ring-2 focus:ring-primary/20 focus:border-primary/60 placeholder:text-gray-400"
-                  placeholder="Cari produk, part, atau kategori..."
-                  aria-label="Search"
+                  name="q"
+                  type="search"
+                  className="w-full h-9 rounded-xl border bg-surface-elevated text-foreground text-sm pl-9 pr-4 outline-none border-border transition-all focus:border-primary/50 focus:ring-2 focus:ring-primary/10 placeholder:text-muted-foreground/60"
+                  placeholder="Cari sparepart, merk, atau kategori..."
+                  aria-label="Cari produk"
                 />
-              </div>
+              </form>
 
-              {/* Desktop Nav */}
-              <nav className="hidden lg:flex items-center gap-6">
-                {[
-                  { label: "Catalog", href: "/catalog" },
-                  { label: "Mesin", href: "/catalog?category_id=1" },
-                  { label: "Body Part", href: "/catalog?category_id=2" },
-                ].map((link) => (
-                  <Link
-                    key={link.label}
-                    href={link.href}
-                    className="text-xs font-semibold text-gray-500 hover:text-primary transition-colors"
-                  >
-                    {link.label}
-                  </Link>
-                ))}
+              {/* Desktop nav */}
+              <nav className="hidden lg:flex items-center gap-5" aria-label="Menu desktop">
+                <Link
+                  href="/catalog"
+                  className="text-[11px] font-bold text-muted-foreground hover:text-primary transition-colors tracking-wide"
+                >
+                  Katalog
+                </Link>
               </nav>
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="hidden sm:flex items-center gap-2">
-                  <WishlistButton />
-                  <CartButton />
-                </div>
-                <HeaderAuth />
-                {/* Mobile icons handled by MobileNav */}
-                <MobileNav />
-              </div>
+              {/* Action buttons */}
+              <HeaderActions />
             </div>
           </header>
 
-          <main className="flex-1">{children}</main>
+          {/* ── Main Content ────────────────────────────────────── */}
+          <main className="flex-1" id="main-content">
+            {children}
+          </main>
 
+          {/* ── Footer ─────────────────────────────────────────── */}
           <MarketplaceFooter />
-        </LayoutStateHydrator>
 
-        <Script
-          src="https://app.sandbox.midtrans.com/snap/snap.js"
-          data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
-          strategy="beforeInteractive"
-        />
+          {/* ── Toasts ─────────────────────────────────────────── */}
+          <Toaster position="bottom-center" theme="dark" />
+        </LayoutStateHydrator>
       </body>
     </html>
   );

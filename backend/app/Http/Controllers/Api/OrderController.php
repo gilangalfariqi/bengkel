@@ -24,18 +24,27 @@ class OrderController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $request->validate([
-            'shipping_cost'   => 'required|numeric',
-            'courier'         => 'required|string',
-            'service'         => 'required|string',
-            'recipient_name'  => 'required|string',
-            'recipient_phone' => 'required|string',
-            'province'        => 'required|string',
-            'city'            => 'required|string',
-            'postal_code'     => 'required|string',
-            'address_detail'  => 'required|string',
-            'notes'           => 'nullable|string',
+        $validated = $request->validate([
+            'shipping_cost'   => 'required|numeric|min:0',
+            'courier'         => 'required|string|max:50',
+            'service'         => 'required|string|max:50',
+            'recipient_name'  => 'required|string|max:120',
+            'recipient_phone' => 'required|string|max:30',
+            'province'        => 'nullable|string|max:120',
+            'city'            => 'nullable|string|max:120',
+            'postal_code'     => 'nullable|string|max:20',
+            'address_detail'  => 'nullable|string|max:500',
+            'notes'           => 'nullable|string|max:1000',
         ]);
+
+        if (($validated['courier'] ?? '') !== 'pickup') {
+            $request->validate([
+                'province'       => 'required|string|max:120',
+                'city'           => 'required|string|max:120',
+                'postal_code'    => 'required|string|max:20',
+                'address_detail' => 'required|string|max:500',
+            ]);
+        }
 
         try {
             $order = $this->orderService->createOrder($request->user(), $request->all());

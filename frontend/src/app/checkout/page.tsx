@@ -3,442 +3,356 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, ShieldCheck, ChevronDown, ChevronUp, Lock, Truck } from "lucide-react";
+import { ArrowLeft, ShieldCheck, MessageCircle, Loader2, CheckCircle2 } from "lucide-react";
+import { motion } from "framer-motion";
 
-import { useCartStore } from "@/stores/cartStore";
-import { useProductStore } from "@/stores/productStore";
-import { orderService } from "@/services/orderService";
-import { cartService } from "@/services/cartService";
-import { cn } from "@/lib/utils";
+import { useCartStore } from "@/presentation/stores/cartStore";
+import { useProductStore } from "@/presentation/stores/productStore";
+import { useAuthStore } from "@/presentation/stores/authStore";
+import { buildWhatsAppOrderMessage, buildWhatsAppUrl } from "@/lib/whatsapp";
+import { getImageUrl, formatIDR } from "@/lib/formatters";
 
-declare global {
-  interface Window {
-    snap: {
-      pay: (snapToken: string, callbacks: {
-        onSuccess: (result: any) => void;
-        onPending?: (result: any) => void;
-        onError?: (result: any) => void;
-        onClose?: () => void;
-      }) => void;
-    };
-  }
-}
+const ADMIN_PHONE = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP_PHONE || "6281234567890";
 
-function formatIDR(value: number | string) {
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(num);
-}
-
-type PaymentOption = {
-  id: string;
-  label: string;
-  desc: string;
-  disabled?: boolean;
+type FormState = {
+  name: string;
+  phone: string;
+  address: string;
+  notes: string;
 };
+
+type FormErrors = Partial<Record<keyof FormState, string>>;
+
+function validate(form: FormState): FormErrors {
+  const errors: FormErrors = {};
+  if (!form.name.trim()) errors.name = "Nama wajib diisi";
+  if (!form.phone.trim()) errors.phone = "Nomor HP wajib diisi";
+  else if (!/^[\d\s+\-()]{8,15}$/.test(form.phone.trim()))
+    errors.phone = "Format nomor HP tidak valid";
+  if (!form.address.trim()) errors.address = "Alamat wajib diisi";
+  return errors;
+}
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, hydrate, clearCart } = useCartStore();
   const { products, fetchProducts, isLoading } = useProductStore();
+  const { user, isHydrated: isAuthHydrated, hydrate: hydrateAuth } = useAuthStore();
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [form, setForm] = useState<FormState>({ name: "", phone: "", address: "", notes: "" });
+  const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
 
   useEffect(() => {
     hydrate();
     fetchProducts();
-  }, [hydrate, fetchProducts]);
+    hydrateAuth();
+  }, [hydrate, fetchProducts, hydrateAuth]);
+
+  useEffect(() => {
+    if (isAuthHydrated && !user) {
+      router.push("/login?redirect=/checkout");
+    }
+  }, [user, isAuthHydrated, router]);
+
+  useEffect(() => {
+    if (user) {
+      setForm((prev) => ({
+        ...prev,
+        name: prev.name || user.name,
+        phone: prev.phone || user.phone || "",
+      }));
+    }
+  }, [user]);
 
   const cartLines = useMemo(() => {
     return items
       .map((line) => {
-        const p = products.find(p => p.id === line.productId);
+        const p = products.find((pp) => pp.id === line.productId);
         if (!p) return null;
         const price = parseFloat(p.discount_price || p.price);
-        return { product: p, qty: line.qty, total: price * line.qty };
+        return { product: p, qty: line.qty, lineTotal: price * line.qty, unitPrice: price };
       })
-      .filter(Boolean) as Array<{ product: (typeof products)[number]; qty: number; total: number }>;
+      .filter(Boolean) as Array<{
+        product: (typeof products)[number];
+        qty: number;
+        lineTotal: number;
+        unitPrice: number;
+      }>;
   }, [items, products]);
 
-  const subtotal = cartLines.reduce((sum, l) => sum + l.total, 0);
-  const hasItems = cartLines.length > 0;
+  const subtotal = cartLines.reduce((sum, l) => sum + l.lineTotal, 0);
 
-  const [address, setAddress] = useState({
-    name: "",
-    phone: "",
-    province: "",
-    city: "",
-    kecamatan: "",
-    zip: "",
-    detail: "",
-    isPrimary: true,
-  });
+  function setField<K extends keyof FormState>(key: K, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
+  }
 
-  const [kurir, setKurir] = useState("regular");
-  const [ongkir, setOngkir] = useState<number>(15000); // Default simulated
-  const [paymentMethod, setPaymentMethod] = useState<"bank_transfer" | "ewallet" | "credit_card" | "virtual_account" | "cod">("bank_transfer");
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (cartLines.length === 0) return;
 
-  const shippingOptions = [
-    { id: "regular", label: "Regular", desc: "2-4 Hari", price: 15000, icon: "/icons/regular.svg" },
-    { id: "hemat", label: "Hemat", desc: "3-5 Hari", price: 9000, icon: "/icons/hemat.svg" },
-    { id: "instan", label: "Instan", desc: "1-2 Hari", price: 25000, icon: "/icons/instan.svg" },
-    { id: "pickup", label: "Ambil di Toko", desc: "Ambil di toko terdekat", price: 0, icon: "/icons/store.svg" },
-  ];
-
-  const paymentOptions: PaymentOption[] = [
-    { id: "bank_transfer", label: "Transfer Bank", desc: "Bayar melalui bank pilihan" },
-    { id: "ewallet", label: "E-Wallet", desc: "OVO, GoPay, Dana, ShopeePay" },
-    { id: "credit_card", label: "Kartu Kredit / Debit", desc: "Visa, Mastercard, JCB" },
-    { id: "virtual_account", label: "Virtual Account", desc: "BCA, Mandiri, BNI, BRI" },
-    { id: "cod", label: "COD (Bayar di Tempat)", desc: "Tidak tersedia untuk produk tertentu", disabled: true },
-  ];
-
-  useEffect(() => {
-    // Update simulated ongkir when kurir changes
-    const selected = shippingOptions.find(o => o.id === kurir);
-    if (selected) setOngkir(selected.price);
-  }, [kurir]);
-
-  const handleNextStep1 = () => {
-    const required = [address.name, address.phone, address.province, address.city, address.zip, address.detail];
-    if (required.some((v) => !String(v).trim())) {
-      alert("Mohon lengkapi alamat pengiriman.");
+    const newErrors = validate(form);
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
-    setStep(2);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
-  const handleNextStep2 = () => {
-    setStep(3);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  async function onCreatePayment() {
-    if (!hasItems) return;
     setIsSubmitting(true);
     try {
-      await cartService.syncCart(items);
-      const orderResponse = await orderService.createOrder({
-        shipping_cost: ongkir,
-        courier: kurir,
-        service: "REG",
-        recipient_name: address.name,
-        recipient_phone: address.phone,
-        province: address.province,
-        city: address.city,
-        postal_code: address.zip,
-        address_detail: address.detail,
-        notes: "Order via Web",
+      const orderId = `WA-${Date.now().toString(36).toUpperCase()}`;
+      const timestamp = new Intl.DateTimeFormat("id-ID", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Asia/Jakarta",
+      }).format(new Date()) + " WIB";
+
+      const msg = buildWhatsAppOrderMessage({
+        orderId,
+        timestamp,
+        customerName: form.name,
+        customerPhone: form.phone,
+        address: form.address,
+        notes: form.notes,
+        grandTotal: formatIDR(subtotal),
+        items: cartLines.map((l) => ({
+          name: l.product.name,
+          qty: l.qty,
+          unitPrice: formatIDR(l.unitPrice),
+          subtotal: formatIDR(l.lineTotal),
+        })),
       });
 
-      const snapToken = orderResponse.data.payment.snap_token;
-      if (window.snap) {
-        window.snap.pay(snapToken, {
-          onSuccess: (result) => {
-            clearCart();
-            window.location.href = "/payment/success?method=" + (result.payment_type || paymentMethod);
-          },
-          onPending: (result) => {
-            clearCart();
-            window.location.href = "/payment/success?method=" + (result.payment_type || paymentMethod);
-          },
-          onError: (result) => {
-            console.error("Payment Error:", result);
-            alert("Pembayaran gagal. Silakan coba lagi.");
-          },
-          onClose: () => {
-            alert("Anda menutup jendela pembayaran.");
-          }
-        });
-      } else {
-        alert("Sistem pembayaran belum siap. Silakan muat ulang halaman.");
-      }
-    } catch (err: any) {
-      console.error("Order Creation Error:", err);
-      const errorMessage = err?.response?.data?.message || err?.message || "Gagal membuat pesanan.";
-      alert(errorMessage);
+      const waUrl = buildWhatsAppUrl(ADMIN_PHONE, msg);
+      clearCart();
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+      router.push("/catalog");
+    } catch {
+      setErrors({ name: "Terjadi kesalahan, coba lagi." });
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  if (isLoading) {
+  if (isLoading || !isAuthHydrated || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  if (!hasItems && !isLoading) {
+  if (cartLines.length === 0 && !isLoading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
-        <h2 className="text-xl font-bold">Keranjang Kosong</h2>
-        <button onClick={() => router.push('/catalog')} className="mt-4 text-primary font-bold">Belanja Sekarang</button>
+      <div className="flex flex-col min-h-[50vh] items-center justify-center gap-4 px-4 text-center">
+        <ShieldCheck className="h-12 w-12 text-muted-foreground/30" />
+        <h2 className="text-lg font-black text-foreground">Keranjang kosong</h2>
+        <p className="text-sm text-muted-foreground">Tambahkan produk sebelum checkout.</p>
+        <button onClick={() => router.push("/catalog")} className="btn btn-primary">
+          Mulai Belanja
+        </button>
       </div>
     );
   }
+
+  const isValid = Object.keys(validate(form)).length === 0 && cartLines.length > 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 md:pb-12">
-      {/* ── App Header ────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 bg-white border-b border-gray-100 shadow-sm px-4 h-14 flex items-center justify-between max-w-lg mx-auto">
-        <button onClick={() => step > 1 ? setStep((s) => (s - 1) as 1|2|3) : router.back()} className="h-10 w-10 flex items-center justify-center text-gray-900 -ml-2">
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="text-base font-bold text-gray-900">Checkout</h1>
-        <div className="w-10" /> {/* Spacer */}
-      </header>
+    <div className="min-h-screen bg-background pb-36 md:pb-8">
+      {/* Sub-header */}
+      <div className="sticky top-14 z-40 glass-header">
+        <div className="container mx-auto px-4 max-w-2xl flex items-center gap-3 h-12">
+          <button
+            onClick={() => router.back()}
+            className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Kembali"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <h1 className="text-sm font-black text-foreground tracking-tight">Checkout via WhatsApp</h1>
+        </div>
+      </div>
 
-      <div className="max-w-lg mx-auto bg-white min-h-[calc(100vh-3.5rem)]">
-        {/* ── Stepper ─────────────────────────────────────────────── */}
-        <div className="px-6 py-6 border-b border-gray-100 relative">
-          <div className="flex justify-between relative z-10">
-            {/* Line connecting steps */}
-            <div className="absolute top-4 left-6 right-6 h-[2px] bg-gray-200 -z-10" />
-            
-            {/* Step 1 */}
-            <div className="flex flex-col items-center gap-2">
-              <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors", step >= 1 ? "bg-primary text-white" : "bg-gray-200 text-gray-400")}>1</div>
-              <span className={cn("text-[10px] font-bold", step >= 1 ? "text-primary" : "text-gray-400")}>Alamat</span>
+      <form onSubmit={onSubmit} noValidate>
+        <div className="container mx-auto px-4 pt-6 max-w-2xl space-y-4">
+
+          {/* WA info banner */}
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-start gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/8 p-4"
+          >
+            <MessageCircle className="h-4.5 w-4.5 text-emerald-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-emerald-200/90">
+              <span className="font-black text-emerald-300">Cara kerja:</span> Isi form di bawah → klik tombol → pesan dikirim otomatis ke WhatsApp admin kami.
             </div>
-            {/* Step 2 */}
-            <div className="flex flex-col items-center gap-2">
-              <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors", step >= 2 ? "bg-primary text-white" : "bg-white border-2 border-gray-200 text-gray-400")}>2</div>
-              <span className={cn("text-[10px] font-bold", step >= 2 ? "text-primary" : "text-gray-400")}>Pengiriman</span>
+          </motion.div>
+
+          {/* ── Customer form ──────────────────────────────────── */}
+          <div className="card p-5 space-y-4">
+            <h2 className="section-eyebrow">Data Pemesan</h2>
+
+            {/* Name */}
+            <div>
+              <label htmlFor="checkout-name" className="field-label">
+                Nama Lengkap <span className="text-primary">*</span>
+              </label>
+              <input
+                id="checkout-name"
+                type="text"
+                autoComplete="name"
+                value={form.name}
+                onChange={(e) => setField("name", e.target.value)}
+                className="field-input"
+                placeholder="Masukkan nama lengkap Anda"
+              />
+              {errors.name && <p className="field-error">{errors.name}</p>}
             </div>
-            {/* Step 3 */}
-            <div className="flex flex-col items-center gap-2">
-              <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors", step >= 3 ? "bg-primary text-white" : "bg-white border-2 border-gray-200 text-gray-400")}>3</div>
-              <span className={cn("text-[10px] font-bold", step >= 3 ? "text-primary" : "text-gray-400")}>Pembayaran</span>
+
+            {/* Phone */}
+            <div>
+              <label htmlFor="checkout-phone" className="field-label">
+                Nomor HP / WhatsApp <span className="text-primary">*</span>
+              </label>
+              <input
+                id="checkout-phone"
+                type="tel"
+                autoComplete="tel"
+                inputMode="tel"
+                value={form.phone}
+                onChange={(e) => setField("phone", e.target.value)}
+                className="field-input"
+                placeholder="08xxxxxxxxxx"
+              />
+              {errors.phone && <p className="field-error">{errors.phone}</p>}
+            </div>
+
+            {/* Address */}
+            <div>
+              <label htmlFor="checkout-address" className="field-label">
+                Alamat Pengiriman <span className="text-primary">*</span>
+              </label>
+              <textarea
+                id="checkout-address"
+                autoComplete="street-address"
+                value={form.address}
+                onChange={(e) => setField("address", e.target.value)}
+                className="field-textarea"
+                placeholder="Jl. Nama Jalan No. X, Kelurahan, Kecamatan, Kota, Provinsi"
+                rows={3}
+              />
+              {errors.address && <p className="field-error">{errors.address}</p>}
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label htmlFor="checkout-notes" className="field-label">
+                Catatan <span className="text-muted-foreground/50">(opsional)</span>
+              </label>
+              <textarea
+                id="checkout-notes"
+                value={form.notes}
+                onChange={(e) => setField("notes", e.target.value)}
+                className="field-textarea"
+                placeholder="Contoh: Tolong hubungi saya sebelum pengiriman"
+                rows={2}
+              />
             </div>
           </div>
+
+          {/* ── Order Summary ──────────────────────────────────── */}
+          <div className="card p-5 space-y-4">
+            <h2 className="section-eyebrow">Ringkasan Pesanan</h2>
+
+            <div className="space-y-3">
+              {cartLines.map(({ product, qty, lineTotal }) => (
+                <div key={product.id} className="flex items-center gap-3">
+                  <div className="relative h-12 w-12 shrink-0 rounded-xl overflow-hidden border border-border bg-secondary/30">
+                    <Image
+                      src={getImageUrl(product.primary_image?.image_path)}
+                      alt={product.name}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-foreground line-clamp-1">{product.name}</p>
+                    <p className="text-[10px] text-muted-foreground font-medium">
+                      {qty} pcs × {formatIDR(parseFloat(product.discount_price || product.price))}
+                    </p>
+                  </div>
+                  <span className="text-sm font-black text-foreground shrink-0">{formatIDR(lineTotal)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="divider" />
+
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="text-xs font-black text-foreground uppercase tracking-widest">Total Produk</div>
+                <div className="text-[10px] text-muted-foreground/60 mt-0.5">*Ongkir dikonfirmasi via WA</div>
+              </div>
+              <span className="text-xl font-black text-primary">{formatIDR(subtotal)}</span>
+            </div>
+          </div>
+
+          {/* Form preview / what WA will send */}
+          {isValid && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className="card p-5 border-emerald-500/20 bg-emerald-500/4"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
+                  Siap dikirim ke WhatsApp
+                </span>
+              </div>
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <p><span className="font-bold text-foreground">Nama:</span> {form.name}</p>
+                <p><span className="font-bold text-foreground">No HP:</span> {form.phone}</p>
+                <p><span className="font-bold text-foreground">Alamat:</span> {form.address}</p>
+                <p><span className="font-bold text-foreground">Produk:</span> {cartLines.length} item</p>
+                <p><span className="font-bold text-foreground">Total:</span> {formatIDR(subtotal)}</p>
+              </div>
+            </motion.div>
+          )}
         </div>
 
-        {/* ── STEP 1: ALAMAT ──────────────────────────────────────── */}
-        {step === 1 && (
-          <div className="p-6 animate-in slide-in-from-right-4 duration-300">
-            <div className="flex items-center gap-3 bg-rose-50/50 p-3 rounded-xl border border-rose-100 mb-6">
-              <ShieldCheck className="h-5 w-5 text-primary shrink-0" />
-              <p className="text-xs text-gray-700 font-medium leading-tight">
-                Belanjaanmu aman! Kami tidak akan membagikan data kamu.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-gray-900">Alamat Pengiriman</h2>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Nama Penerima</label>
-                <input value={address.name} onChange={(e) => setAddress({ ...address, name: e.target.value })} className="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition" placeholder="Nama Lengkap" />
+        {/* ── Submit CTA ──────────────────────────────────────── */}
+        <div className="fixed bottom-[5.25rem] md:bottom-0 left-0 right-0 z-50 px-4 pb-4 md:pb-6">
+          <div className="container mx-auto max-w-2xl">
+            <div className="glass rounded-2xl p-3">
+              <div className="flex items-center justify-between mb-2.5 px-1">
+                <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Total Produk</span>
+                <span className="text-base font-black text-primary">{formatIDR(subtotal)}</span>
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Nomor Telepon</label>
-                <input value={address.phone} onChange={(e) => setAddress({ ...address, phone: e.target.value })} className="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition" placeholder="08xxxxxxxxxx" type="tel" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Provinsi</label>
-                <input value={address.province} onChange={(e) => setAddress({ ...address, province: e.target.value })} className="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition" placeholder="Pilih Provinsi" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Kota / Kabupaten</label>
-                <input value={address.city} onChange={(e) => setAddress({ ...address, city: e.target.value })} className="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition" placeholder="Pilih Kota / Kabupaten" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Kode Pos</label>
-                <input value={address.zip} onChange={(e) => setAddress({ ...address, zip: e.target.value })} className="w-full h-12 px-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition" placeholder="Kode Pos" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block">Alamat Lengkap</label>
-                <textarea value={address.detail} onChange={(e) => setAddress({ ...address, detail: e.target.value })} rows={3} className="w-full p-4 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition resize-none" placeholder="Alamat lengkap, nama jalan, nomor rumah, patokan (opsional)" />
-              </div>
-
-              <div className="flex items-center justify-between pt-2 pb-6 border-b border-gray-100">
-                <span className="text-sm font-semibold text-gray-900">Jadikan sebagai alamat utama</span>
-                <button 
-                  onClick={() => setAddress({...address, isPrimary: !address.isPrimary})}
-                  className={cn("w-11 h-6 rounded-full transition-colors relative", address.isPrimary ? "bg-primary" : "bg-gray-200")}
-                >
-                  <div className={cn("absolute top-1 w-4 h-4 rounded-full bg-white transition-transform shadow-sm", address.isPrimary ? "translate-x-6" : "translate-x-1")} />
-                </button>
-              </div>
-
-              <button onClick={handleNextStep1} className="w-full h-12 rounded-xl bg-primary text-white text-sm font-bold shadow-glow mt-4 active:scale-[0.98] transition-transform">
-                LANJUT KE PENGIRIMAN
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full flex h-13 items-center justify-center gap-3 rounded-xl bg-primary text-[11px] font-black uppercase tracking-widest text-white shadow-glow hover:shadow-[0_0_28px_rgba(225,29,72,0.4)] active:scale-[0.98] transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed tap-highlight-none"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Membuka WhatsApp...
+                  </>
+                ) : (
+                  <>
+                    <MessageCircle className="h-4 w-4" />
+                    Pesan via WhatsApp
+                  </>
+                )}
               </button>
             </div>
           </div>
-        )}
-
-        {/* ── STEP 2: PENGIRIMAN ────────────────────────────────────── */}
-        {step === 2 && (
-          <div className="p-6 animate-in slide-in-from-right-4 duration-300">
-            <h2 className="text-sm font-bold text-gray-900 mb-4">Metode Pengiriman</h2>
-            
-            <div className="space-y-3 mb-8">
-              {shippingOptions.map((opt) => (
-                <div 
-                  key={opt.id} 
-                  onClick={() => setKurir(opt.id)}
-                  className={cn(
-                    "flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all",
-                    kurir === opt.id ? "border-primary bg-rose-50/30" : "border-gray-200 hover:border-primary/50"
-                  )}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
-                      <Truck className="h-5 w-5 text-gray-600" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-bold text-gray-900">{opt.label}</div>
-                      <div className="text-xs text-gray-500">{opt.desc}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-gray-900">{opt.price === 0 ? "Gratis" : formatIDR(opt.price)}</span>
-                    <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center", kurir === opt.id ? "border-primary" : "border-gray-300")}>
-                      {kurir === opt.id && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Order Summary (Collapsible) */}
-            <div className="border border-gray-200 rounded-2xl p-4 mb-8">
-              <div 
-                className="flex items-center justify-between cursor-pointer"
-                onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
-              >
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900">Ringkasan Pesanan</h3>
-                  <p className="text-xs text-gray-500">{cartLines.length} Produk</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex -space-x-2">
-                    {cartLines.slice(0, 3).map((item, i) => (
-                      <div key={i} className="w-8 h-8 rounded-full border-2 border-white overflow-hidden bg-gray-100 relative">
-                        <Image 
-                          src={item.product.primary_image?.image_path ? `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/storage/${item.product.primary_image.image_path}` : "https://images.unsplash.com/photo-1520975693415-35a64c9fc0c8?auto=format&fit=crop&w=800&q=80"}
-                          alt="Product"
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  {isSummaryExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
-                </div>
-              </div>
-
-              {isSummaryExpanded && (
-                <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
-                  {cartLines.map((item) => (
-                    <div key={item.product.id} className="flex justify-between text-sm">
-                      <span className="text-gray-600 line-clamp-1 pr-4">{item.qty}x {item.product.name}</span>
-                      <span className="font-semibold text-gray-900 shrink-0">{formatIDR(item.total)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Subtotal</span>
-                  <span className="font-semibold text-gray-900">{formatIDR(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Ongkir</span>
-                  <span className="font-semibold text-gray-900">{formatIDR(ongkir)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-bold pt-2">
-                  <span className="text-gray-900">Total</span>
-                  <span className="text-primary">{formatIDR(subtotal + ongkir)}</span>
-                </div>
-              </div>
-            </div>
-
-            <button onClick={handleNextStep2} className="w-full h-12 rounded-xl bg-primary text-white text-sm font-bold shadow-glow active:scale-[0.98] transition-transform">
-              LANJUT KE PEMBAYARAN
-            </button>
-          </div>
-        )}
-
-        {/* ── STEP 3: PEMBAYARAN ────────────────────────────────────── */}
-        {step === 3 && (
-          <div className="p-6 animate-in slide-in-from-right-4 duration-300">
-            <h2 className="text-sm font-bold text-gray-900 mb-4">Metode Pembayaran</h2>
-
-            <div className="space-y-3 mb-8">
-              {paymentOptions.map((opt) => (
-                <div 
-                  key={opt.id} 
-                  onClick={() => !opt.disabled && setPaymentMethod(opt.id as any)}
-                  className={cn(
-                    "flex items-center justify-between p-4 rounded-2xl border transition-all",
-                    paymentMethod === opt.id ? "border-primary bg-rose-50/30" : "border-gray-200",
-                    opt.disabled ? "opacity-50 cursor-not-allowed bg-gray-50" : "cursor-pointer hover:border-primary/50"
-                  )}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
-                      {/* Using generic icon for simplicity, could map specific icons */}
-                      <ShieldCheck className="h-5 w-5 text-gray-600" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-bold text-gray-900">{opt.label}</div>
-                      <div className={cn("text-xs", opt.disabled ? "text-red-500" : "text-gray-500")}>{opt.desc}</div>
-                    </div>
-                  </div>
-                  <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0", paymentMethod === opt.id ? "border-primary" : "border-gray-300")}>
-                    {paymentMethod === opt.id && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="border border-gray-200 rounded-2xl p-4 mb-8">
-              <h3 className="text-sm font-bold text-gray-900 mb-4">Ringkasan Pembayaran</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Subtotal ({cartLines.length} Produk)</span>
-                  <span className="font-semibold text-gray-900">{formatIDR(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Ongkir</span>
-                  <span className="font-semibold text-gray-900">{formatIDR(ongkir)}</span>
-                </div>
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Metode Pembayaran</span>
-                  <span className="font-semibold text-gray-900">{paymentOptions.find(o => o.id === paymentMethod)?.label}</span>
-                </div>
-                <div className="h-px bg-gray-100 my-2" />
-                <div className="flex justify-between items-center pt-1">
-                  <span className="text-sm font-bold text-gray-900">Total Pembayaran</span>
-                  <span className="text-lg font-black text-primary">{formatIDR(subtotal + ongkir)}</span>
-                </div>
-              </div>
-            </div>
-
-            <button 
-              disabled={isSubmitting}
-              onClick={onCreatePayment} 
-              className="w-full h-12 rounded-xl bg-primary text-white text-sm font-bold shadow-glow flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-70 disabled:active:scale-100"
-            >
-              {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Lock className="h-4 w-4" />}
-              {isSubmitting ? "MEMPROSES..." : "BUAT PESANAN"}
-            </button>
-            <p className="text-[10px] text-center text-gray-500 mt-4 leading-relaxed">
-              Dengan membuat pesanan, kamu menyetujui<br/>
-              <span className="font-bold text-primary">Syarat & Ketentuan</span> yang berlaku.
-            </p>
-          </div>
-        )}
-      </div>
+        </div>
+      </form>
     </div>
   );
 }

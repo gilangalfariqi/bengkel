@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BengkelPro Frontend (Next.js + Tailwind CSS v4)
 
-## Getting Started
+This package contains the Next.js App Router frontend for BengkelPro, designed with a premium, mobile-first dark-themed motorcycle sparepart catalog.
 
-First, run the development server:
+## Tech Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+*   **Core**: Next.js App Router, React 19, TypeScript
+*   **Styling**: Tailwind CSS v4, custom utility layers (glassmorphism, radial gradient overlays, CSS variable theme tokens)
+*   **State Management**: Zustand 5
+*   **Icons**: Lucide React
+*   **Notifications**: Sonner (embedded with custom layout styling)
+*   **Animations**: Framer Motion
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Folder Reorganization (Clean Architecture)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+We maintain modularity by isolating responsibilities into clear layers:
 
-## Learn More
+*   **`src/domain/`**: Enterprise core entities (pure structures, types, and schema validations). Contains `api.ts`, `auth.ts`, `product.ts`, `cart.ts`, and `order.ts`.
+*   **`src/data/`**: Gateways and infrastructure. Handles networking requests via `api/httpClient.ts`, `api/authApi.ts`, and wraps business features in `services/`.
+*   **`src/presentation/`**: Visual layers and interaction states.
+    *   `components/layout/` - Shared layouts like `MobileNav`, headers, footers.
+    *   `components/product/` - Product displays and category scrolls.
+    *   `components/ui/` - Primitives and reusable helpers like `EmptyState` or `Toaster`.
+    *   `hooks/` - Shared interaction helpers like `useDebounce`.
+    *   `stores/` - Local client store instances managed by Zustand.
+*   **`src/lib/`**: Context-free helpers like currency formatters and WhatsApp message compilers.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Key Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Navigate to `/frontend` and use the following scripts for development:
 
-## Deploy on Vercel
+*   **Start Development Server**:
+    ```bash
+    npm run dev
+    ```
+    Runs the dev environment with Turbopack enabled on port `3000`.
+*   **Production Build Compilation**:
+    ```bash
+    npm run build
+    ```
+    Creates an optimized static page bundle.
+*   **TypeScript Verification**:
+    ```bash
+    npx tsc --noEmit
+    ```
+    Typechecks the entire codebase.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Design System & Themes
+
+The styling is handled entirely within `globals.css` using custom theme mappings compatible with Tailwind CSS v4:
+*   `--background`: `#060912` (Vibrant deep dark)
+*   `--card`: `#0F1421` (Refined card container surface)
+*   `--primary`: `#E11D48` (Crimson red brand color)
+*   `--border`: `rgba(255,255,255,0.07)` (Semi-transparent boundaries)
+*   `.glass`: Backdrop-filter glassmorphism overlay utility
+*   `.shadow-glow`: Dynamic box shadow glow styling for active buttons
+
+All responsive elements are optimized for small touch screens (375px–430px) as well as desktops.

@@ -25,17 +25,12 @@ class PaymentCreateTest extends TestCase
             'status' => 'pending',
         ]);
 
-        // Mock MidtransClient to return deterministic token
-        $mock = Mockery::mock(MidtransClientInterface::class);
-        $mock->shouldReceive('getSnapToken')->once()->andReturn('snap-test-token');
-        $this->app->instance(MidtransClientInterface::class, $mock);
-
         // Act as user (sanctum)
         $response = $this->actingAs($user, 'sanctum')
             ->postJson('/api/payments/create', ['order_id' => $order->id]);
 
         $response->assertStatus(200);
         $response->assertJsonStructure(['success', 'data' => ['snap_token', 'client_key']]);
-        $this->assertEquals('snap-test-token', $response->json('data.snap_token'));
+        $this->assertNull($response->json('data.snap_token'));
     }
 }
