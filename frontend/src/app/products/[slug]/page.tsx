@@ -199,6 +199,8 @@ export default function ProductDetailPage() {
                       key={i}
                       type="button"
                       onClick={() => setSelectedImage(i)}
+                      aria-label={`Lihat gambar produk ${i + 1}`}
+                      title={`Lihat gambar produk ${i + 1}`}
                       className={cn(
                         "relative h-16 w-16 shrink-0 rounded-xl overflow-hidden border-2 transition-all duration-200",
                         selectedImage === i

@@ -53,7 +53,7 @@ export default function HeaderAuth() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 h-8 px-2.5 rounded-xl border border-border bg-card hover:border-border-strong transition-all"
         aria-haspopup="true"
-        aria-expanded={isOpen}
+        aria-expanded={isOpen ? "true" : "false"}
       >
         <div className="h-5 w-5 rounded-lg bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
           <span className="text-[8px] font-black text-primary">{initial}</span>

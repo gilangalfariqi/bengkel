@@ -206,8 +206,9 @@ export default function ProfilePage() {
                 <form onSubmit={handleSaveProfile} className="space-y-4" noValidate>
                   {/* Email (readonly) */}
                   <div>
-                    <label className="field-label">Alamat Email</label>
+                    <label htmlFor="profile-email" className="field-label">Alamat Email</label>
                     <input
+                      id="profile-email"
                       type="email"
                       value={user.email}
                       disabled

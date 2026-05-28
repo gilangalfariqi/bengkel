@@ -35,9 +35,13 @@ function SuccessContent() {
   return (
     <div className="min-h-screen bg-[#090C16] text-[#F8FAFC] flex justify-center md:items-center">
       <div className="w-full max-w-lg bg-[#111625] min-h-screen md:min-h-0 md:rounded-3xl md:shadow-premium md:border md:border-white/5 flex flex-col overflow-hidden">
-        {/* Header */}
         <header className="px-4 h-14 flex items-center border-b border-white/5 shrink-0 bg-slate-950/80 backdrop-blur-xl justify-between">
-          <button onClick={() => router.push('/')} className="h-10 w-10 flex items-center justify-center text-white -ml-2 hover:bg-slate-900/60 rounded-xl transition-colors">
+          <button
+            onClick={() => router.push('/')}
+            className="h-10 w-10 flex items-center justify-center text-white -ml-2 hover:bg-slate-900/60 rounded-xl transition-colors"
+            aria-label="Kembali ke Beranda"
+            title="Kembali ke Beranda"
+          >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <span className="text-xs font-black uppercase tracking-wider text-slate-400">Pemesanan Selesai</span>
