@@ -10,6 +10,8 @@ return [
         'http://127.0.0.1:3000',
         'http://127.0.0.1:3001',
         'http://localhost:3001',
+        'bengkel-eight.vercel.app',
+        'https://bengkel-eight.vercel.app',
     ],
 
     // Allow additional dev origins without having to re-edit this file.
